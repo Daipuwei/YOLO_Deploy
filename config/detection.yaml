@@ -1,0 +1,21 @@
+DetectionModel:
+  model_type: "yolov5"
+  class_names_path: ./model_data/coco_names.txt
+  model_path: ./model_data/yolov5s.onnx
+  input_shape: [1, 3,640,640]
+  output_shape: [1,25200,85]
+  input_name: 'input'
+  output_name: 'output'
+  engine: 'tensorrt'
+  #engine: 'onnx'
+  mode: "fp16"
+  calibrator_image_dir: None
+  calibrator_cache_path: None
+  confidence_threshold: 0.3
+  iou_threshold: 0.45
+
+log_path: "./log.log"
+tmp_dir: "./tmp"
+interval: 1     # 视频抽帧频率 默认为1s一帧
+
+
