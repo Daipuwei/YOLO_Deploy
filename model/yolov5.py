@@ -11,18 +11,16 @@
 
 import os
 import sys
-
 import cv2
 import numpy as np
 
 from model import DetectionModel
-from utils import xywh2xyxy
-from utils import clip_coords
-from utils import scale_coords
-from utils import get_classes
-from utils import letterbox
-from utils import draw_detection_results
 from utils import load_yaml
+from utils import letterbox
+from utils import get_classes
+from utils import xywh2xyxy
+from utils import scale_coords
+from utils import draw_detection_results
 
 class YOLOv5(DetectionModel):
 
@@ -45,12 +43,9 @@ class YOLOv5(DetectionModel):
         super(YOLOv5,self).__init__(logger=logger,
                                     class_names=class_names,
                                     onnx_model_path=cfg['DetectionModel']['model_path'],
-                                    input_name=cfg['DetectionModel']['input_name'],
-                                    output_name=cfg['DetectionModel']['output_name'],
                                     input_shape=cfg['DetectionModel']['input_shape'],
-                                    output_shape=cfg['DetectionModel']['output_shape'],
                                     model_type=cfg['DetectionModel']['model_type'],
-                                    engine_type=cfg['DetectionModel']['engine'],
+                                    engine_type=cfg['DetectionModel']['engine_type'],
                                     engine_mode=cfg['DetectionModel']['mode'],
                                     gpu_id=gpu_id,
                                     confidence_threshold=cfg['DetectionModel']['confidence_threshold'],
@@ -65,33 +60,15 @@ class YOLOv5(DetectionModel):
         Returns:
         """
         # 填充像素并等比例缩放
-        # print(np.shape(image))
         h,w = np.shape(image)[0:2]
 
         scale = np.array([w / self.w, h / self.h, w / self.w, h / self.h], dtype=np.float32)
-        # image_tensor = cv2.resize(image, (self.h, self.w))
-        # image_tensor = image_tensor.astype('float32')
-        # # 转换颜色空间，BGR->RGB
-        # image_tensor = np.transpose(image_tensor,(2, 0, 1))
-        # # 归一化
-        # image_tensor = image_tensor / 255.0
-
-        # image_tensor = np.ascontiguousarray(image_tensor)
-        # # # 扩充维度
-        # # image_tensor = np.expand_dims(image_tensor,0)
-        # # scale = np.expand_dims(scale,0)
-
-        #image_tensor = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         image_tensor = letterbox(image,(self.h,self.w))
-        #image_tensor = cv2.resize(image, (self.h, self.w))
         #cv2.imwrite("demo.jpg",image_tensor)
         image_tensor = np.transpose(image_tensor,(2, 0, 1))
         image_tensor = np.ascontiguousarray(image_tensor)
         # 归一化
         image_tensor = image_tensor / 255.0
-        # # # 扩充维度
-        # image_tensor = np.expand_dims(image_tensor,0)
-        # scale = np.expand_dims(scale,0//)
         return image_tensor,scale,(h,w)
 
     def preprocess_batch_images(self,batch_images):
@@ -212,7 +189,6 @@ class YOLOv5(DetectionModel):
             else:
                 preds.append(pred)
                 #self.logger.info("该帧图像检测到{0}个目标".format(len(pred)))
-        # preds = np.array(preds)
         return preds
 
     def detect(self,image):
@@ -237,7 +213,7 @@ class YOLOv5(DetectionModel):
         # 模型推理
         if self.engine is None:
             return []
-        outputs = self.engine.inference(image_tensor)
+        outputs = self.engine.inference([image_tensor])[0]
         if outputs is None:
             return []
         # 对推理结果进行后处理

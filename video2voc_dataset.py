@@ -29,7 +29,7 @@ VID_FORMATS = ['.asf', '.avi', '.gif', '.m4v', '.mkv', '.mov', '.mp4', '.mpeg', 
 parser = argparse.ArgumentParser()
 parser.add_argument('--cfg', type=str, default='./config/detection.yaml', help='config yaml file path')
 parser.add_argument('--video', type=str, default='./video', help='video path or video directory')
-parser.add_argument('--result_dir', type=str, default="./result", help='video detection result save directory')
+parser.add_argument('--result_dir', type=str, default="./result", help='voc dataset save directory')
 parser.add_argument('--interval', type=int, default=1, help='video interval')
 parser.add_argument('--num_threads', type=int, default=1, help='number of detection threads')
 parser.add_argument('--confidence_threshold', type=float, default=0.5, help='detection confidence_threshold')
@@ -62,33 +62,24 @@ def video2voc_dataset(logger,detection_model,video,result_dir,interval=1,num_thr
     #print(source)
     logger.info("开始初始化视频文件")
     if os.path.isfile(video):               # 单个视频
-        dir,filename = os.path.split(video)
-        fname,ext = os.path.splitext(filename)
-        if ext in VID_FORMATS:
-            video_paths.append(os.path.abspath(video))
-            voc_dataset_dir = os.path.join(result_dir,fname)
-            voc_image_dir = os.path.join(voc_dataset_dir,"JPEGImages")
-            voc_xml_dir = os.path.join(voc_dataset_dir,"Annotations")
-            if not os.path.exists(voc_image_dir):
-                os.makedirs(voc_image_dir)
-            if not os.path.exists(voc_xml_dir):
-                os.makedirs(voc_xml_dir)
-            voc_dataset_dirs.append(voc_dataset_dir)
-    else:                                       # 批量视频
+        video_paths = [os.path.abspath(video)]
+    else:
+        video_paths = []
         for filename in os.listdir(video):
-            #print(filename)
             fname,ext = os.path.splitext(filename)
-            #print(ext)
             if ext in VID_FORMATS:
                 video_paths.append(os.path.join(video,filename))
-                voc_dataset_dir = os.path.join(result_dir, fname)
-                voc_image_dir = os.path.join(voc_dataset_dir, "JPEGImages")
-                voc_xml_dir = os.path.join(voc_dataset_dir, "Annotations")
-                if not os.path.exists(voc_image_dir):
-                    os.makedirs(voc_image_dir)
-                if not os.path.exists(voc_xml_dir):
-                    os.makedirs(voc_xml_dir)
-                voc_dataset_dirs.append(voc_dataset_dir)
+    for video_path in video_paths:
+        _,video_name = os.path.split(video_path)
+        fname, ext = os.path.splitext(video_name)
+        voc_dataset_dir = os.path.join(result_dir, fname)
+        voc_image_dir = os.path.join(voc_dataset_dir, "JPEGImages")
+        voc_xml_dir = os.path.join(voc_dataset_dir, "Annotations")
+        if not os.path.exists(voc_image_dir):
+            os.makedirs(voc_image_dir)
+        if not os.path.exists(voc_xml_dir):
+            os.makedirs(voc_xml_dir)
+        voc_dataset_dirs.append(voc_dataset_dir)
     video_paths = np.array(video_paths)
     voc_dataset_dirs = np.array(voc_dataset_dirs)
     logger.info("结束初始化视频文件")
@@ -117,25 +108,6 @@ def video2voc_dataset(logger,detection_model,video,result_dir,interval=1,num_thr
     logger.info("图像检测与预标注开始")
     detect_imageset_save_voc_annotations(detection_model,voc_image_paths,
                                          voc_xml_paths,num_threads,confidence_threshold)
-    # for i in tqdm(np.arange(len(voc_image_paths))):
-    #     # 初始化VOC标签写入类
-    #     image = cv2.imread(voc_image_paths[i])
-    #     h, w, c = np.shape(image)
-    #     writer = Writer(voc_image_paths[i], w, h)
-    #
-    #     # 检测图像并将检测结果写入XML
-    #     class_names = detection_model.get_class_names()
-    #     preds = detection_model.detect(image)
-    #     if len(preds) > 0:
-    #         for x1, y1, x2, y2, score, cls_id in preds:
-    #             if score > confidence_threshold:
-    #                 x1 = int(round(x1))
-    #                 y1 = int(round(y1))
-    #                 x2 = int(round(x2))
-    #                 y2 = int(round(y2))
-    #                 cls_id = int(cls_id)
-    #                 writer.addObject(class_names[cls_id], x1, y1, x2, y2)
-    #         writer.save(voc_xml_paths[i])
     logger.info("图像检测与预标注结束")
 
 def video_decode(video_paths, voc_dataset_dirs,interval=1):
@@ -196,7 +168,7 @@ def single_video2imageset(video_path,voc_dataset_path,bin=1):
     fname, ext = os.path.splitext(video_name)
 
     # 利用FFmpeg进行视频抽帧
-    image_format = os.path.join(voc_dataset_path,"JPEGImages","{0}_%08d.jpg".format(fname))
+    image_format = os.path.join(voc_dataset_path,"JPEGImages","{0}_frame%08d.jpg".format(fname))
     os.system("ffmpeg -i {0} -f image2 -vf fps=1/{1} -qscale:v 2 {2}".format(video_path,bin,image_format))
     #os.system("ffmpeg -i {0} -f image2 -vf fps={1} -qscale:v 2 {2}".format(video_path, bin, image_format))
     # command_extract = "select=(gte(n\,%d))*not(mod(n\,%d))" % (60,bin)
@@ -214,12 +186,6 @@ def detect_imageset_save_voc_annotations(detection_model,voc_image_paths,voc_xml
         confidence_threshold: 检测结果置信度阈值,用于判定检测结果是否写入XML文件,默认为0.1
     Returns:
     """
-    # 初始化检测模型数组
-    # detection_models = [detection_model]
-    # for i in np.arange(num_threads-1):
-    #     detection_models.append(deepcopy(detection_model))
-    # detection_models = [detection_model]*num_threads
-
     # 多线程检测图像并生成VOC标签
     size = len(voc_image_paths)
     batch_size = size // num_threads
@@ -303,20 +269,16 @@ def run_main():
             from model import YOLOv5
             detection_model = YOLOv5(logger=logger, cfg=cfg)
         detection_models.append(detection_model)
-    # if model_type == 'yolov5':
-    #     from model import YOLOv5
-    #     detection_model = YOLOv5(logger=logger, cfg=cfg)
-    # else:
-    #     from model import YOLOv5
-    #     detection_model = YOLOv5(logger=logger, cfg=cfg)
 
     # 初始化图像及其结果保存文件夹路径
-    time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    result_dir = os.path.join(opt.result_dir, time)
+    # time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    # result_dir = os.path.join(opt.result_dir, time)
+    result_dir = os.path.abspath(opt.result_dir)
     video = os.path.abspath(opt.video)
 
     # 检测图像
-    video2voc_dataset(logger, detection_models, video,result_dir,opt.interval,opt.num_threads,opt.confidence_threshold)
+    video2voc_dataset(logger, detection_models, video,result_dir,
+                      opt.interval,opt.num_threads,opt.confidence_threshold)
 
 if __name__ == '__main__':
     run_main()

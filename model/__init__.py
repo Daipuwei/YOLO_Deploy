@@ -7,6 +7,6 @@
 
 
 from .base_model import DetectionModel
-from .onnx_model import ONNX_Engine
-from .tensorrt_model import TensorRT_Engine
+from .engine import ONNX_Engine
+from .yolov5 import DetectionModel
 from .yolov5 import YOLOv5

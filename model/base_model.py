@@ -14,10 +14,10 @@ import colorsys
 
 class DetectionModel:
 
-    def __init__(self,logger,onnx_model_path,class_names,input_name,output_name,
-                 input_shape,output_shape,model_type="yolov5",engine_type='onnx',
-                 engine_mode="fp32",confidence_threshold=0.5,iou_threshold=0.5,
-                 gpu_id=0,calibrator_image_dir=None,calibrator_cache_path=None):
+    def __init__(self, logger, onnx_model_path, class_names,input_shape,
+                 model_type="yolov5", engine_type='onnx',engine_mode="fp32",
+                 confidence_threshold=0.5, iou_threshold=0.5,
+                 gpu_id=0, calibrator_image_dir=None, calibrator_cache_path=None):
         """
         这是抽象检测模型类的初始化函数
         Args:
@@ -44,13 +44,10 @@ class DetectionModel:
         self.model_type = model_type
         self.engine_type = engine_type.lower()
         self.engine_mode = engine_mode.lower()
-        self.input_name = input_name
-        self.output_name = output_name
         self.input_shape = input_shape
-        self.output_shape = output_shape
         self.confidence_threshold = confidence_threshold
         self.iou_threshold = iou_threshold
-        self.batchsize, self.c, self.h, self.w = self.input_shape
+        self.batchsize, self.c, self.h, self.w = input_shape
         self.image_num = 0
         self.gpu_id = gpu_id
         self.calibrator_image_dir = calibrator_image_dir
@@ -59,7 +56,12 @@ class DetectionModel:
         # 初始化不同引擎的模型路径
         dir,model_name = os.path.split(self.onnx_model_path)
         fname,ext = os.path.splitext(model_name)
-        self.tensorrt_model_path = os.path.join(dir,fname+".trt")
+        if self.engine_type == 'onnx':
+            self.engine_model_path = self.onnx_model_path
+        elif self.engine_type == 'tensorrt':
+            self.engine_model_path = os.path.join(dir,fname+".trt")
+        else:
+            self.engine_model_path = self.onnx_model_path
 
         # 初始化颜色列表
         hsv_tuples = [(x / len(self.class_names), 1., 1.)
@@ -69,15 +71,11 @@ class DetectionModel:
 
         # 初始化推理引擎
         if self.engine_type == 'onnx':
-            from .onnx_model import ONNX_Engine
+            from .engine import ONNX_Engine
             self.engine = ONNX_Engine(logger=logger,
-                                      onnx_model_path=self.onnx_model_path,
-                                      input_name=self.input_name,
-                                      output_name=self.output_name,
-                                      input_shape=self.input_shape,
-                                      output_shape=self.output_shape)
+                                      onnx_model_path=self.engine_model_path)
         elif self.engine_type == 'tensorrt':
-            from .tensorrt_model import TensorRT_Engine
+            from .engine import TensorRT_Engine
             if self.engine_mode == 'int8' or self.calibrator_cache_path is not None \
                     or self.calibrator_image_dir is not None:
                 if self.model_type == "yolov5":
@@ -96,21 +94,14 @@ class DetectionModel:
                 trt_int8_calibrator = None
             self.engine = TensorRT_Engine(logger=logger,
                                           onnx_model_path=self.onnx_model_path,
-                                          tensorrt_model_path=self.tensorrt_model_path,
-                                          input_name=self.input_name,
-                                          output_name=self.output_name,
-                                          input_shape=self.input_shape,
-                                          output_shape=self.output_shape,
+                                          tensorrt_model_path=self.engine_model_path,
                                           gpu_idx=self.gpu_id,
                                           mode=self.engine_mode,
                                           trt_int8_calibrator=trt_int8_calibrator)
         else:
-            from .onnx_model import ONNX_Engine
-            self.engine = ONNX_Engine(onnx_model_path=self.onnx_model_path,
-                                      input_name=input_name,
-                                      output_name=output_name,
-                                      input_shape=input_shape,
-                                      output_shape=output_shape)
+            from model.engine.onnx_model import ONNX_Engine
+            self.engine = ONNX_Engine(logger=logger,
+                                      onnx_model_path=self.engine_model_path)
 
     def get_batch_size(self):
         return self.batchsize
