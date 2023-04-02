@@ -12,6 +12,7 @@
 import os
 import sys
 import cv2
+import time
 import numpy as np
 
 from model import DetectionModel
@@ -61,7 +62,6 @@ class YOLOv5(DetectionModel):
         """
         # 填充像素并等比例缩放
         h,w = np.shape(image)[0:2]
-
         scale = np.array([w / self.w, h / self.h, w / self.w, h / self.h], dtype=np.float32)
         image_tensor = letterbox(image,(self.h,self.w))
         #cv2.imwrite("demo.jpg",image_tensor)
@@ -128,9 +128,9 @@ class YOLOv5(DetectionModel):
         # 根据置信度对预测框进行过滤
         #print(np.shape(dets))
         obj_conf = dets[:, 4]
-        # dets = dets[obj_conf > self.confidence_threshold]
-        # obj_conf = obj_conf[obj_conf > self.confidence_threshold]
-        # print(np.shape(obj_conf))
+        dets = dets[obj_conf > self.confidence_threshold]
+        obj_conf = obj_conf[obj_conf > self.confidence_threshold]
+        #print(np.shape(obj_conf))
 
         # 计算每个类别的后验概率
         cls_id = np.argmax(dets[:, 5:],axis=1)
@@ -191,11 +191,12 @@ class YOLOv5(DetectionModel):
                 #self.logger.info("该帧图像检测到{0}个目标".format(len(pred)))
         return preds
 
-    def detect(self,image):
+    def detect(self,image,export_time=False):
         """
         这是YOLO-FaceV2进行人脸检测的函数
         Args:
             image: 输入图像，可以为单张图像也可以为图像数组
+            export_time: 是否输出时间信息标志位，默认为False
         Returns:
         """
         # 获取图像个数
@@ -209,15 +210,28 @@ class YOLOv5(DetectionModel):
                 self.image_num = shape[0]
 
         # 做图像预处理
+        preprocess_start = time.time()
         image_tensor,scales,image_shapes = self.preprocess(image)
+        preprocess_end = time.time()
+        preprocess_time = (preprocess_end-preprocess_start)*1000
         # 模型推理
         if self.engine is None:
             return []
+        inference_start = time.time()
         outputs = self.engine.inference([image_tensor])[0]
+        inference_end = time.time()
+        inference_time = (inference_end-inference_start)*1000
         if outputs is None:
             return []
         # 对推理结果进行后处理
+        postprocess_start = time.time()
         outputs = self.postprocess(outputs,image_shapes)
+        postprocess_end = time.time()
+        postprocess_time = (postprocess_end-postprocess_start)*1000
+        detect_time = preprocess_time+inference_time+postprocess_time
+        self.logger.info("预处理时间：{0:.2f}ms,推理时间:{1:.2f}ms,后处理时间：{2:.2f}ms,检测时间：{3:.2f}ms"
+                         .format(round(preprocess_time,2),round(inference_time,2),
+                                 round(postprocess_time,2),round(detect_time,2)))
 
         if self.image_num == 1:         # 仅有一张图像，则进行降维
             outputs = outputs[0]
@@ -227,8 +241,9 @@ class YOLOv5(DetectionModel):
                 x2 = int(round(x2))
                 y2 = int(round(y2))
                 cls_id = int(cls_id)
+                score = round(score,2)
                 self.logger.info("检测到{0}, bbox: {1},{2},{3},{4},"
-                                 "score:{5}".format(self.class_names[cls_id],x1,y1,x2,y2,score))
+                                 "score:{5:.2f}".format(self.class_names[cls_id],x1,y1,x2,y2,score))
         else:
             for i in range(self.image_num):
                 for x1, y1, x2, y2, score, cls_id in outputs[i]:
@@ -237,10 +252,15 @@ class YOLOv5(DetectionModel):
                     x2 = int(round(x2))
                     y2 = int(round(y2))
                     cls_id = int(cls_id)
+                    score = round(score, 2)
                     self.logger.info(
                         "检测到{0},bbox: {1},{2},{3},{4},"
                         "score:{5}".format(self.class_names[cls_id], x1, y1, x2, y2,score))
-        return outputs
+        if export_time:
+            return outputs,preprocess_time,inference_time,postprocess_time,detect_time
+        else:
+            return outputs
+
 
     def detect_video(self,video_path,result_dir,interval=-1):
         """
@@ -273,7 +293,7 @@ class YOLOv5(DetectionModel):
             #print(return_value)
             if return_value:
                 if interval == -1:      #  逐帧检测
-                    preds = self.detect(frame)
+                    preds = self.detect(frame,False)
                     if len(preds) == 0:
                         continue
                     detect_image = draw_detection_results(frame, preds, self.class_names, self.colors)

@@ -49,13 +49,13 @@ def video2voc_dataset(logger,detection_model,video,result_dir,interval=1,num_thr
     Returns:
     """
     # 初始化视频路径
-    # time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    # result_dir = os.path.join(result_dir,time)
-    # if not os.path.exists(result_dir):
-    #     os.makedirs(result_dir)
-    result_dir = os.path.abspath(result_dir)
+    time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    result_dir = os.path.join(result_dir,time)
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
+    # result_dir = os.path.abspath(result_dir)
+    # if not os.path.exists(result_dir):
+    #     os.makedirs(result_dir)
 
     video_paths = []
     voc_dataset_dirs = []
@@ -206,7 +206,6 @@ def detect_imageset_save_voc_annotations(detection_model,voc_image_paths,voc_xml
         threads.append(t)
     for t in threads:
         t.join()
-
 
 def detect_batch_images_save_voc_annotations(detection_model,batch_voc_image_paths,
                                              batch_voc_xml_paths,confidence_threshold=0.1):

@@ -60,3 +60,7 @@ python video2voc_dataset.py --cfg ./config/detection.yaml --video ./video/ --res
 # 图像集转VOC数据集,并进行预标注
 python imageset2voc_dataset.py --cfg ./config/detection.yaml --imageset ./image/ --result_dir ./result --num_threads 4 --confidence_threshold 0.1
 ```
+
+# Reference
+- https://github.com/Cartucho/mAP
+- 

@@ -133,11 +133,12 @@ class DetectionModel:
         """
         pass
 
-    def detect(self,image):
+    def detect(self,image,export_time=False):
         """
         这是检测的图像函数
         Args:
             image: 输入图像，可以为单张图像也可以为图像数组
+            export_time: 是否输出时间信息标志位，默认为False
         Returns:
         """
         pass
