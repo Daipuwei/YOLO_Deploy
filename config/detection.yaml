@@ -5,7 +5,7 @@ DetectionModel:
   input_shape: [1, 3,640,640]
   engine_type: 'tensorrt'
   #engine_type: 'onnx'
-  mode: "fp16"
+  engine_mode: "fp16"
   calibrator_image_dir: None
   calibrator_cache_path: None
   confidence_threshold: 0.3

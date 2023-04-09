@@ -47,7 +47,7 @@ class YOLOv5(DetectionModel):
                                     input_shape=cfg['DetectionModel']['input_shape'],
                                     model_type=cfg['DetectionModel']['model_type'],
                                     engine_type=cfg['DetectionModel']['engine_type'],
-                                    engine_mode=cfg['DetectionModel']['mode'],
+                                    engine_mode=cfg['DetectionModel']['engine_mode'],
                                     gpu_id=gpu_id,
                                     confidence_threshold=cfg['DetectionModel']['confidence_threshold'],
                                     iou_threshold=cfg['DetectionModel']['iou_threshold'])
@@ -243,7 +243,7 @@ class YOLOv5(DetectionModel):
                 cls_id = int(cls_id)
                 score = round(score,2)
                 self.logger.info("检测到{0}, bbox: {1},{2},{3},{4},"
-                                 "score:{5:.2f}".format(self.class_names[cls_id],x1,y1,x2,y2,score))
+                                 "score:{5:.4f}".format(self.class_names[cls_id],x1,y1,x2,y2,score))
         else:
             for i in range(self.image_num):
                 for x1, y1, x2, y2, score, cls_id in outputs[i]:
@@ -255,9 +255,12 @@ class YOLOv5(DetectionModel):
                     score = round(score, 2)
                     self.logger.info(
                         "检测到{0},bbox: {1},{2},{3},{4},"
-                        "score:{5}".format(self.class_names[cls_id], x1, y1, x2, y2,score))
+                        "score:{5:.4f}".format(self.class_names[cls_id], x1, y1, x2, y2,score))
         if export_time:
-            return outputs,preprocess_time,inference_time,postprocess_time,detect_time
+            return outputs, {"preprocess_time": preprocess_time,
+                             "inference_time": inference_time,
+                             "postprocess_time": postprocess_time,
+                             "detect_time": detect_time}
         else:
             return outputs
 

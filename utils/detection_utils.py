@@ -25,6 +25,23 @@ def get_classes(classes_path):
     # classes_names = np.array(classes_names)
     return classes_names
 
+def letterbox(image, resize_shape=(640, 640), color=(114, 114, 114)):
+    h, w, c = image.shape
+    input_h,input_w = resize_shape
+    # Calculate widht and height and paddings
+    r = min(input_w / w,input_h / h)
+    new_unpad = int(round(w * r)), int(round(h * r))
+    dw,dh = input_w-new_unpad[0],input_h-new_unpad[1]
+    dw /= 2
+    dh /= 2
+    resize_image = cv2.resize(image, new_unpad, interpolation=cv2.INTER_LINEAR)
+    top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
+    left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
+    resize_image = cv2.copyMakeBorder(resize_image, top, bottom, left, right,
+                                      cv2.BORDER_CONSTANT, value=color)  # add border
+    #cv2.imwrite('letterbox.jpg', resize_image)
+    return resize_image
+
 def xywh2xyxy(x):
     """
     这是转换预测框坐标格式的函数，xywh->xyxy
@@ -88,7 +105,7 @@ def draw_detection_results(image,preds,classes_names,colors):
     Returns:
     """
     h,w,_= np.shape(image)
-    tl = round(0.002 * (image.shape[0] + image.shape[1]) / 2) + 1  # line/font thickness
+    tl = min(round((image.shape[0] + image.shape[1]) // 300),1)  # line/font thickness
     # print(np.shape(preds))
     #print(preds)
     for x1, y1, x2, y2, score,cls_id in preds:
@@ -107,21 +124,3 @@ def draw_detection_results(image,preds,classes_names,colors):
         cv2.putText(image, text, (int(x1), int(y1 - 2)), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=tl / 3,
                     color=(255, 255, 255), thickness=tf, lineType=cv2.LINE_AA)
     return image
-
-
-def letterbox(image, resize_shape=(640, 640), color=(114, 114, 114)):
-    h, w, c = image.shape
-    input_h,input_w = resize_shape
-    # Calculate widht and height and paddings
-    r = min(input_w / w,input_h / h)
-    new_unpad = int(round(w * r)), int(round(h * r))
-    dw,dh = input_w-new_unpad[0],input_h-new_unpad[1]
-    dw /= 2
-    dh /= 2
-    resize_image = cv2.resize(image, new_unpad, interpolation=cv2.INTER_LINEAR)
-    top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
-    left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
-    resize_image = cv2.copyMakeBorder(resize_image, top, bottom, left, right,
-                                      cv2.BORDER_CONSTANT, value=color)  # add border
-    #cv2.imwrite('letterbox.jpg', resize_image)
-    return resize_image
