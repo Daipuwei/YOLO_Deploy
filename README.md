@@ -2,6 +2,7 @@
 这是YOLO系列算法在不同部署框架下的Python部署项目。目前模型支持YOLOv5，部署框架支持`ONNXRuntime`、`TensorRT`。
 
 # 版本更新日志
+- [2023-04-16]完成模型性能测试脚本，性能指标支持mAP@0.5、mAP@0.5:0.95、mAR@0.5：0.95、每类目标的AP@0.5和AR@0.5支持VOC数据集和COCO数据集，版本为`v1.0`;
 - [2023-04-02]对ONNXRuntime和TensorRT抽象推理引擎模块进行修正，修复不能支持多输入和多输出的bug，并精简抽象检测类接口，版本为`v1.0`;
 - [2023-03-29]首次提交代码，支持ONNXRuntme和TensorRT两种部署框架，实现YOLOv5的部署，支持检测图像（集）和视频（集），版本为`v1.0`;
 
@@ -59,8 +60,13 @@ python detect.py --cfg ./config/detection.yaml --source abspath/image_and_video/
 python video2voc_dataset.py --cfg ./config/detection.yaml --video ./video/ --result_dir ./result --interval 1 --num_threads 4 --confidence_threshold 0.1
 # 图像集转VOC数据集,并进行预标注
 python imageset2voc_dataset.py --cfg ./config/detection.yaml --imageset ./image/ --result_dir ./result --num_threads 4 --confidence_threshold 0.1
+# VOC数据集转COCO数据集
+python voc2coco.py --voc_dataset_dir ../VOC2007 --coco_dataset_dir ../VOC2007-COCO --class_name_path ./model_data/voc_names.txt --choices "train" "val" --save_image
+# COCO数据集评测
+python test.py --cfg ./config/detection.yaml --dataset_dir ../COC2017 --result_dir ./result/yolov5s/COC2017 --choice 'val'  --dataset_type 'coco' --iou_threshold 0.5 --confidence_threshold 0.001 --save_image
+# VOC数据集评测
+python test.py --cfg ./config/detection.yaml --dataset_dir ../VOC2007 --result_dir ./result/yolov5s/COCO217 --choice 'val'  --dataset_type 'voc' --iou_threshold 0.5 --confidence_threshold 0.001 --save_image
+
 ```
 
-# Reference
-- https://github.com/Cartucho/mAP
-- 
+

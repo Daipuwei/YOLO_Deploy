@@ -180,14 +180,32 @@ def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='
     #cocoDt = cocoGt.loadRes(pred_json_result_path)
     cocoDt = COCO(pred_json_result_path)
 
-    # 创建多边形检测框评估器
+    # 创建检测框评估器
     evaluator = COCOeval(cocoGt, cocoDt,iouType='bbox')
     evaluator.evaluate()
     evaluator.accumulate()
     evaluator.summarize()
     map, map50 = evaluator.stats[:2]  # update results (mAP@0.5:0.95, mAP@0.5)
     mar = evaluator.stats[8]
-    logger.info("检测模型在测试集上mAP@0.5={0:.4f},mAP@0.5:0.95={1:.4f},mAR@0.5:0.95={2:.4f}".format(map50,map,mar))
+
+    # 计算每个类别的AP和AR指标，iou=0.5
+    class_stats = []
+    eval_info_list = ["{0}\t{1}\t{2}".format("category name".rjust(15),"mAP@0.5".rjust(15),"mAR@0.5".rjust(15))]
+    for i in range(len(class_names)):
+        stats, print_info = summarize(evaluator, catId=i)
+        ap50,ap75,ap95,ar50,ar75,ar95 =stats[1:7]
+        class_stats.append([ap50,ap75,ap95,ar50,ar75,ar95])
+        eval_info_list.append("{0}\t{1:15.4f}\t{2:15.4f}".format(class_names[i].rjust(15),ap50,ar50))
+    class_stats = np.array(class_stats)
+    class_stats = np.mean(class_stats, 0)
+    eval_info = "\n".join(eval_info_list)
+
+    # 打印模型在测试集上的检测性能
+    logger.info("检测模型在测试集上mAP@0.5={0:.4f},mAP@0.5:0.95={1:.4f}".format(map50, map))
+    logger.info("检测模型在测试集上mAP@0.5={0:.4f},mAR@0.5={1:.4f}".format(class_stats[0], class_stats[1]))
+    logger.info("检测模型在测试集上mAP@0.5:0.95={0:.4f},mAR@0.5:0.95={1:.4f}".format(map, mar))
+    logger.info("检测模型在测试集上各个类别检测性能如下：")
+    logger.info(eval_info)
 
     # 保存结果到txt
     with open(result_txt_path, 'w+', encoding="utf-8") as f:
@@ -202,7 +220,80 @@ def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='
         f.write("测试集路径为：{0}\n".format(dataset_dir))
         f.write("测试集真实标签保存路径为：{0}\n".format(gt_json_result_path))
         f.write("测试集检测标签保存路径为：{0}\n".format(pred_json_result_path))
-        f.write("检测模型在测试集上mAP@0.5={0:.4f},mAP@0.5:0.95={1:.4f},mAR@0.5:0.95={2:.4f}".format(map50,map,mar))
+        f.write("检测模型在测试集上mAP@0.5={0:.4f},mAP@0.5:0.95={1:.4f}\n".format(map50,map))
+        f.write("检测模型在测试集上mAP@0.5={0:.4f},mAR@0.5={1:.4f}\n".format(class_stats[0],class_stats[1]))
+        f.write("检测模型在测试集上mAP@0.5:0.95={0:.4f},mAR@0.5:0.95={1:.4f}\n".format(map,mar))
+        f.write("检测模型在测试集上各个类别检测性能如下：\n")
+        f.write(eval_info)
+
+def summarize(self, catId=None):
+    """
+    Compute and display summary metrics for evaluation results.
+    Note this functin can *only* be applied on the default parameter setting
+    """
+
+    def _summarize(ap=1, iouThr=None, areaRng='all', maxDets=100):
+        p = self.params
+        iStr = ' {:<18} {} @[ IoU={:<9} | area={:>6s} | maxDets={:>3d} ] = {:0.3f}'
+        titleStr = 'Average Precision' if ap == 1 else 'Average Recall'
+        typeStr = '(AP)' if ap == 1 else '(AR)'
+        iouStr = '{:0.2f}:{:0.2f}'.format(p.iouThrs[0], p.iouThrs[-1]) \
+            if iouThr is None else '{:0.2f}'.format(iouThr)
+
+        aind = [i for i, aRng in enumerate(p.areaRngLbl) if aRng == areaRng]
+        mind = [i for i, mDet in enumerate(p.maxDets) if mDet == maxDets]
+
+        if ap == 1:
+            # dimension of precision: [TxRxKxAxM]
+            s = self.eval['precision']
+            # IoU
+            if iouThr is not None:
+                t = np.where(iouThr == p.iouThrs)[0]
+                s = s[t]
+
+            if isinstance(catId, int):
+                s = s[:, :, catId, aind, mind]
+            else:
+                s = s[:, :, :, aind, mind]
+
+        else:
+            # dimension of recall: [TxKxAxM]
+            s = self.eval['recall']
+            if iouThr is not None:
+                t = np.where(iouThr == p.iouThrs)[0]
+                s = s[t]
+
+            if isinstance(catId, int):
+                s = s[:, catId, aind, mind]
+            else:
+                s = s[:, :, aind, mind]
+
+        if len(s[s > -1]) == 0:
+            mean_s = -1
+        else:
+            mean_s = np.mean(s[s > -1])
+
+        print_string = iStr.format(titleStr, typeStr, iouStr, areaRng, maxDets, mean_s)
+        return mean_s, print_string
+
+    stats, print_list = [0] * 10, [""] * 10
+    stats[0], print_list[0] = _summarize(1)
+    stats[1], print_list[1] = _summarize(1, iouThr=.5, maxDets=self.params.maxDets[2])
+    stats[2], print_list[2] = _summarize(1, iouThr=.75, maxDets=self.params.maxDets[2])
+    stats[3], print_list[3] = _summarize(1, iouThr=.95, maxDets=self.params.maxDets[2])
+    stats[4], print_list[4] = _summarize(0, iouThr=.5, maxDets=self.params.maxDets[2])
+    stats[5], print_list[5] = _summarize(0, iouThr=.75, maxDets=self.params.maxDets[2])
+    stats[6], print_list[6] = _summarize(0, iouThr=.95, maxDets=self.params.maxDets[2])
+    stats[7], print_list[7] = _summarize(0, maxDets=self.params.maxDets[0])
+    stats[8], print_list[8] = _summarize(0, maxDets=self.params.maxDets[1])
+    stats[9], print_list[9] = _summarize(0, maxDets=self.params.maxDets[2])
+
+    print_info = "\n".join(print_list)
+
+    if not self.eval:
+        raise Exception('Please run accumulate() first')
+
+    return stats, print_info
 
 def run_main():
     """
