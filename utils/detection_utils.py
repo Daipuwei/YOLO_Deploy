@@ -94,28 +94,61 @@ def clip_coords(bboxes, img_shape):
     bboxes[:, 3] = np.clip(bboxes[:, 3], 0, img_shape[0])   # y2
     return bboxes
 
-def draw_detection_results(image,preds,classes_names,colors):
+# def draw_detection_results(image,preds,classes_names,colors):
+#     """
+#     这是绘制人脸检测结果的函数
+#     Args:
+#         image: 图像，opnecv读入
+#         preds: 检测结果，shape为(num,5)
+#         classes_names: 目标名称列表
+#         colors: rgb颜色列表
+#     Returns:
+#     """
+#     h,w,_= np.shape(image)
+#     tl = min(round((image.shape[0] + image.shape[1]) // 300),1)  # line/font thickness
+#     # print(np.shape(preds))
+#     #print(preds)
+#     for x1, y1, x2, y2, score,cls_id in preds:
+#         x1 = int(round(x1))
+#         y1 = int(round(y1))
+#         x2 = int(round(x2))
+#         y2 = int(round(y2))
+#         cls_id = int(cls_id)
+#         #print(x1,y1,x2,y2)
+#         text = "{0}:{1:.4f}".format(classes_names[cls_id],score)
+#         tf = max(tl - 1, 1)
+#         t_size = cv2.getTextSize(text, 0, fontScale=tl / 3, thickness=tf)[0]
+#         cv2.rectangle(image, (int(x1), int(y1)), (int(x2), int(y2)), colors[cls_id], thickness=tl, lineType=cv2.LINE_AA)
+#         cv2.rectangle(image, (int(x1), int(y1)), (int(x1 + t_size[0]), int(y1 - t_size[1] - 3)), colors[cls_id],
+#                       thickness=-1, lineType=cv2.LINE_AA)
+#         cv2.putText(image, text, (int(x1), int(y1 - 2)), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=tl / 3,
+#                     color=(255, 255, 255), thickness=tf, lineType=cv2.LINE_AA)
+#     return image
+
+def draw_detection_results(image,preds,colors):
     """
     这是绘制人脸检测结果的函数
     Args:
         image: 图像，opnecv读入
-        preds: 检测结果，shape为(num,5)
-        classes_names: 目标名称列表
+        preds: 检测结果，格式为{'bbox':[x1,y1,x2,y2],
+                             "score":score,
+                             "category":cls_name,
+                             "category_id":cls_id}
         colors: rgb颜色列表
     Returns:
     """
     h,w,_= np.shape(image)
     tl = min(round((image.shape[0] + image.shape[1]) // 300),1)  # line/font thickness
-    # print(np.shape(preds))
-    #print(preds)
-    for x1, y1, x2, y2, score,cls_id in preds:
+    for output in preds:
+        x1, y1, x2, y2 = output['bbox']
+        score = round(output['score'], )
+        cls_name = output['category']
+        cls_id = output['category_id']
         x1 = int(round(x1))
         y1 = int(round(y1))
         x2 = int(round(x2))
         y2 = int(round(y2))
-        cls_id = int(cls_id)
-        #print(x1,y1,x2,y2)
-        text = "{0}:{1:.4f}".format(classes_names[cls_id],score)
+        text = "{0}:{1:.4f}".format(cls_name,score)
         tf = max(tl - 1, 1)
         t_size = cv2.getTextSize(text, 0, fontScale=tl / 3, thickness=tf)[0]
         cv2.rectangle(image, (int(x1), int(y1)), (int(x2), int(y2)), colors[cls_id], thickness=tl, lineType=cv2.LINE_AA)

@@ -16,6 +16,7 @@ import argparse
 import numpy as np
 from tqdm import tqdm
 from datetime import datetime
+from tabulate import tabulate
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
@@ -112,7 +113,8 @@ def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='
                     # 保存检测图片
                     if save_image:
                         _, image_name = os.path.split(image_path)
-                        draw_image = draw_detection_results(image, preds, class_names, colors)
+                        #draw_image = draw_detection_results(image, preds, class_names, colors)
+                        draw_image = draw_detection_results(image, preds,colors)
                         cv2.imwrite(os.path.join(detect_image_dir, image_name), draw_image)
                     # 初始化图像信息
                     h, w, c = np.shape(image)
@@ -128,10 +130,12 @@ def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='
                                            'id': gt_annotation_cnt})
                         gt_annotation_cnt += 1
                     # 初始化图像中每个预测结果
-                    for x1, y1, x2, y2, score, cls_id in preds:
+                    for pred in preds:
+                        x1,y1,x2,y2 = pred['bbox']
+                        score = pred["score"]
+                        cls_id = pred["category_id"]
                         bbox_w = x2 - x1
                         bbox_h = y2 - y1
-                        cls_id = int(cls_id)
                         detection_results.append({'image_id': image_cnt,
                                                   'iscrowd': 0,
                                                   'category_id': cls_id,
@@ -190,22 +194,29 @@ def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='
 
     # 计算每个类别的AP和AR指标，iou=0.5
     class_stats = []
-    eval_info_list = ["{0}\t{1}\t{2}".format("category name".rjust(15),"mAP@0.5".rjust(15),"mAR@0.5".rjust(15))]
     for i in range(len(class_names)):
         stats, print_info = summarize(evaluator, catId=i)
         ap50,ap75,ap95,ar50,ar75,ar95 =stats[1:7]
-        class_stats.append([ap50,ap75,ap95,ar50,ar75,ar95])
-        eval_info_list.append("{0}\t{1:15.4f}\t{2:15.4f}".format(class_names[i].rjust(15),ap50,ar50))
-    class_stats = np.array(class_stats)
-    class_stats = np.mean(class_stats, 0)
-    eval_info = "\n".join(eval_info_list)
+        ap50_95 = stats[0]
+        ar50_95 = stats[-1]
+        class_stats.append([ap50, ar50,ap75,ar75,ap95,ar95,ap50_95,ar50_95])
+    class_stats_mean = np.mean(class_stats, 0)
+    class_stats.append(class_stats_mean)
+
+    # 初始化表格
+    result_table = []
+    class_names = class_names+['all']
+    for i in np.arange(len(class_names)):
+        result_table.append([class_names[i],*class_stats[i]])
+    result_table = tabulate(result_table,
+                            tablefmt="pipe", numalign="left",
+                            headers=["类别", "AP@0.5", "AR@0.5", "AP@0.75", "AR@0.75", "AP@0.95", "AR@0.95",
+                                     "AP@0.5:0.95", "AR@0.5:0.95"])
 
     # 打印模型在测试集上的检测性能
     logger.info("检测模型在测试集上mAP@0.5={0:.4f},mAP@0.5:0.95={1:.4f}".format(map50, map))
-    logger.info("检测模型在测试集上mAP@0.5={0:.4f},mAR@0.5={1:.4f}".format(class_stats[0], class_stats[1]))
-    logger.info("检测模型在测试集上mAP@0.5:0.95={0:.4f},mAR@0.5:0.95={1:.4f}".format(map, mar))
     logger.info("检测模型在测试集上各个类别检测性能如下：")
-    logger.info(eval_info)
+    logger.info(result_table)
 
     # 保存结果到txt
     with open(result_txt_path, 'w+', encoding="utf-8") as f:
@@ -221,10 +232,8 @@ def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='
         f.write("测试集真实标签保存路径为：{0}\n".format(gt_json_result_path))
         f.write("测试集检测标签保存路径为：{0}\n".format(pred_json_result_path))
         f.write("检测模型在测试集上mAP@0.5={0:.4f},mAP@0.5:0.95={1:.4f}\n".format(map50,map))
-        f.write("检测模型在测试集上mAP@0.5={0:.4f},mAR@0.5={1:.4f}\n".format(class_stats[0],class_stats[1]))
-        f.write("检测模型在测试集上mAP@0.5:0.95={0:.4f},mAR@0.5:0.95={1:.4f}\n".format(map,mar))
         f.write("检测模型在测试集上各个类别检测性能如下：\n")
-        f.write(eval_info)
+        f.write(result_table)
 
 def summarize(self, catId=None):
     """
