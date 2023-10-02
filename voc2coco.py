@@ -12,13 +12,14 @@
 import os
 import cv2
 import json
-import argparse
 import numpy as np
 import xml.etree.ElementTree as ET
 from tqdm import tqdm
 from multiprocessing import Pool,cpu_count
 
-parser = argparse.ArgumentParser()
+from utils import ArgsParser
+
+parser = ArgsParser()
 parser.add_argument('--voc_dataset_dir', type=str, default='./VOC2007', help='VOC datset directory')
 parser.add_argument('--coco_dataset_dir', type=str, default='./VOC2007-COCO', help='COCO datset directory')
 parser.add_argument('--class_name_path', type=str, default='./voc_names.txt', help='VOC dataset object name txt path')

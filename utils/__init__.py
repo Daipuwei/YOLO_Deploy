@@ -9,5 +9,4 @@ from .detection_utils import *
 from .common_utils import *
 from .logger_utils import *
 from .json_utils import *
-from .tensorrt_utils import *
 from .dataloader_utils import *

@@ -71,11 +71,11 @@ class DetectionModel:
 
         # 初始化推理引擎
         if self.engine_type == 'onnx':
-            from .engine import ONNX_Engine
+            from engine import ONNX_Engine
             self.engine = ONNX_Engine(logger=logger,
                                       onnx_model_path=self.engine_model_path)
         elif self.engine_type == 'tensorrt':
-            from .engine import TensorRT_Engine
+            from engine import TensorRT_Engine
             if self.engine_mode == 'int8' or self.calibrator_cache_path is not None \
                     or self.calibrator_image_dir is not None:
                 if self.model_type == "yolov5":
@@ -99,7 +99,7 @@ class DetectionModel:
                                           mode=self.engine_mode,
                                           trt_int8_calibrator=trt_int8_calibrator)
         else:
-            from model.engine.onnx_model import ONNX_Engine
+            from engine.onnx.onnx_model import ONNX_Engine
             self.engine = ONNX_Engine(logger=logger,
                                       onnx_model_path=self.engine_model_path)
 

@@ -11,19 +11,19 @@
 
 import os
 import cv2
-import argparse
 import numpy as np
 from tqdm import tqdm
 from datetime import datetime
 
-from utils import load_yaml
+from utils import ArgsParser
+from utils import init_config
 from utils import logger_config
 from utils import draw_detection_results
 
 IMG_FORMATS = ['.bmp', '.dng', '.jpeg', '.jpg', '.mpo', '.png', '.tif', '.tiff', '.webp']  # include image suffixes
 VID_FORMATS = ['.asf', '.avi', '.gif', '.m4v', '.mkv', '.mov', '.mp4', '.mpeg', '.mpg', '.ts', '.wmv']  # include video suffixes
 
-parser = argparse.ArgumentParser()
+parser = ArgsParser()
 parser.add_argument('--cfg', type=str, default='./config/detection.yaml', help='config yaml file path')
 parser.add_argument('--source', type=str, default='./video', help='image path or image directory or video path or video directory')
 parser.add_argument('--result_dir', type=str, default="./result", help='video detection result save directory')
@@ -95,8 +95,9 @@ def run_main():
     """
     这是主函数
     """
+    # 初始化参数
+    cfg = init_config(opt)
     # 初始化检测模型
-    cfg = load_yaml(opt.cfg)
     model_type = cfg["DetectionModel"]["model_type"].lower()
     logger = logger_config(cfg['log_path'], model_type)
     if model_type == 'yolov5':
@@ -107,8 +108,9 @@ def run_main():
         detection_model = YOLOv5(logger=logger, cfg=cfg)
 
     # 初始化相关路径路径
-    time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    result_dir = os.path.join(opt.result_dir,time)
+    # time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    # result_dir = os.path.join(opt.result_dir,time)
+    result_dir = os.path.abspath(opt.result_dir)
     source = os.path.abspath(opt.source)
     interval = opt.interval
 

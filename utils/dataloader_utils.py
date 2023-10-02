@@ -110,9 +110,19 @@ class VOCDataset(object):
         """
         batch_image_paths = self.image_paths[start:end]
         batch_xml_paths = self.xml_paths[start:end]
-        batch_images = [cv2.imread(image_path) for image_path in batch_image_paths]
-        batch_gts = [parse_xml(xml_path) for xml_path in batch_xml_paths]
-        return batch_images,batch_gts,batch_image_paths
+        batch_meta_data = []
+        batch_images = []
+        for image_path,xml_path in zip(batch_image_paths,batch_xml_paths):
+            image = cv2.imread(image_path)
+            gts = parse_xml(xml_path)
+            batch_meta_data.append({
+                "gt": gts,
+                "image_path":image_path
+            })
+            batch_images.append(image)
+        batch_images = np.array(batch_images)
+        batch_meta_data = np.array(batch_meta_data)
+        return batch_images,batch_meta_data
 
     def __next__(self):
         self.end = min(self.start+self.batchsize,self.image_num)
@@ -121,9 +131,9 @@ class VOCDataset(object):
             self.end = 0
             raise StopIteration
         else:
-            batch_images, batch_gts,batch_image_paths = self.get_batch_data(self.start,self.end)
+            batch_images,batch_meta_data = self.get_batch_data(self.start,self.end)
             self.start = self.end
-            return batch_images, batch_gts,batch_image_paths
+            return batch_images,batch_meta_data
 
     def __iter__(self):
         return self
@@ -207,9 +217,19 @@ class COCODataset(object):
         Returns:
         """
         batch_image_paths = self.image_paths[start:end]
-        batch_images = [cv2.imread(image_path) for image_path in batch_image_paths]
-        batch_gts = [self.image_gt_dict[image_path] for image_path in batch_image_paths]
-        return batch_images,batch_gts,batch_image_paths
+        batch_meta_data = []
+        batch_images = []
+        for image_path in batch_image_paths:
+            image = cv2.imread(image_path)
+            gts = self.image_gt_dict[image_path]
+            batch_meta_data.append({
+                "gt": gts,
+                "image_path": image_path
+            })
+            batch_images.append(image)
+        batch_images = np.array(batch_images)
+        batch_meta_data = np.array(batch_meta_data)
+        return batch_images,batch_meta_data
 
     def __next__(self):
         self.end = min(self.start+self.batchsize,self.image_num)
@@ -218,9 +238,9 @@ class COCODataset(object):
             self.end = 0
             raise StopIteration
         else:
-            batch_images, batch_gts,batch_image_paths = self.get_batch_data(self.start,self.end)
+            batch_images,batch_meta_data = self.get_batch_data(self.start,self.end)
             self.start = self.end
-            return batch_images, batch_gts,batch_image_paths
+            return batch_images,batch_meta_data
 
     def __iter__(self):
         return self

@@ -16,6 +16,7 @@ import time
 import numpy as np
 
 from model import DetectionModel
+
 from utils import load_yaml
 from utils import letterbox
 from utils import get_classes
@@ -164,15 +165,7 @@ class YOLOv5(DetectionModel):
         scores = scores[indices].reshape((-1,1))
         cls_id = cls_id[indices].reshape((-1,1))
         preds = np.concatenate([bboxes,scores,cls_id],axis=1)
-
-        # 将检测结果转换为字典
-        outputs = []
-        for x1, y1, x2, y2, score, cls_id in preds:
-            outputs.append({"bbox":[x1,y1,x2,y2],
-                            "score":score,
-                            "category":self.class_names[int(cls_id)],
-                            "category_id":int(cls_id)})
-        return outputs
+        return preds
 
     def postprocess(self,outputs,image_shapes):
         """
@@ -243,28 +236,27 @@ class YOLOv5(DetectionModel):
 
         if self.image_num == 1:         # 仅有一张图像，则进行降维
             outputs = outputs[0]
-            for output in outputs:
-                x1,y1,x2,y2 = output['bbox']
-                score = round(output['score'],)
-                cls_name = output['category']
+            for x1, y1, x2, y2, score, cls_id in outputs:
                 x1 = int(round(x1))
                 y1 = int(round(y1))
                 x2 = int(round(x2))
                 y2 = int(round(y2))
+                cls_id = int(cls_id)
+                score = round(score,2)
                 self.logger.info("检测到{0}, bbox: {1},{2},{3},{4},"
-                                 "score:{5:.4f}".format(cls_name,x1,y1,x2,y2,score))
+                                 "score:{5:.4f}".format(self.class_names[cls_id],x1,y1,x2,y2,score))
         else:
             for i in range(self.image_num):
-                for output in outputs[i]:
-                    x1, y1, x2, y2 = output['bbox']
-                    score = round(output['score'], )
-                    cls_name = output['category']
+                for x1, y1, x2, y2, score, cls_id in outputs[i]:
                     x1 = int(round(x1))
                     y1 = int(round(y1))
                     x2 = int(round(x2))
                     y2 = int(round(y2))
-                    self.logger.info("检测到{0}, bbox: {1},{2},{3},{4},"
-                                     "score:{5:.4f}".format(cls_name, x1, y1, x2, y2, score))
+                    cls_id = int(cls_id)
+                    score = round(score, 2)
+                    self.logger.info(
+                        "检测到{0},bbox: {1},{2},{3},{4},"
+                        "score:{5:.4f}".format(self.class_names[cls_id], x1, y1, x2, y2,score))
         if export_time:
             return outputs, {"preprocess_time": preprocess_time,
                              "inference_time": inference_time,

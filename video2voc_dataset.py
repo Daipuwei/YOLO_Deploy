@@ -11,7 +11,6 @@
 
 import os
 import cv2
-import argparse
 import numpy as np
 from tqdm import tqdm
 from threading import Thread
@@ -20,13 +19,14 @@ from pascal_voc_writer import Writer
 from multiprocessing import Pool
 from multiprocessing import cpu_count
 
-from utils import load_yaml
+from utils import ArgsParser
+from utils import init_config
 from utils import print_error
 from utils import logger_config
 
 VID_FORMATS = ['.asf', '.avi', '.gif', '.m4v', '.mkv', '.mov', '.mp4', '.mpeg', '.mpg', '.ts', '.wmv']  # include video suffixes
 
-parser = argparse.ArgumentParser()
+parser = ArgsParser()
 parser.add_argument('--cfg', type=str, default='./config/detection.yaml', help='config yaml file path')
 parser.add_argument('--video', type=str, default='./video', help='video path or video directory')
 parser.add_argument('--result_dir', type=str, default="./result", help='voc dataset save directory')
@@ -35,7 +35,7 @@ parser.add_argument('--num_threads', type=int, default=1, help='number of detect
 parser.add_argument('--confidence_threshold', type=float, default=0.5, help='detection confidence_threshold')
 opt = parser.parse_args()
 
-def video2voc_dataset(logger,detection_model,video,result_dir,interval=1,num_threads=1,confidence_threshold=0.1):
+def video2voc_dataset(logger,detection_model,video,result_dir,interval=1,num_threads=1):
     """
     这是利用检测模型对视频(集)进行预标注并生成VOC数据集的函数
     Args:
@@ -45,19 +45,17 @@ def video2voc_dataset(logger,detection_model,video,result_dir,interval=1,num_thr
         result_dir: 结果保存路径
         interval: 视频抽帧间隔，默认为1s
         num_threads: 检测线程数,默认为1
-        confidence_threshold: 检测结果置信度阈值,用于判定检测结果是否写入XML文件,默认为0.1
     Returns:
     """
     # 初始化视频路径
-    time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    result_dir = os.path.join(result_dir,time)
-    if not os.path.exists(result_dir):
-        os.makedirs(result_dir)
-    # result_dir = os.path.abspath(result_dir)
+    # time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    # result_dir = os.path.join(result_dir,time)
     # if not os.path.exists(result_dir):
     #     os.makedirs(result_dir)
+    result_dir = os.path.abspath(result_dir)
+    if not os.path.exists(result_dir):
+        os.makedirs(result_dir)
 
-    video_paths = []
     voc_dataset_dirs = []
     #print(source)
     logger.info("开始初始化视频文件")
@@ -106,8 +104,7 @@ def video2voc_dataset(logger,detection_model,video,result_dir,interval=1,num_thr
 
     # 检测图像并生成VOC数据集标签
     logger.info("图像检测与预标注开始")
-    detect_imageset_save_voc_annotations(detection_model,voc_image_paths,
-                                         voc_xml_paths,num_threads,confidence_threshold)
+    detect_imageset_save_voc_annotations(detection_model,voc_image_paths,voc_xml_paths,num_threads)
     logger.info("图像检测与预标注结束")
 
 def video_decode(video_paths, voc_dataset_dirs,interval=1):
@@ -175,7 +172,7 @@ def single_video2imageset(video_path,voc_dataset_path,bin=1):
     # com_str = 'ffmpeg -i {0}  -vf "{1}" -vsync 0 {2}'.format(video_path,command_extract,image_format)
     # os.system(com_str)
 
-def detect_imageset_save_voc_annotations(detection_model,voc_image_paths,voc_xml_paths,num_threads=1,confidence_threshold=0.1):
+def detect_imageset_save_voc_annotations(detection_model,voc_image_paths,voc_xml_paths,num_threads=1,):
     """
     这是检测图像集并保存VOC标签集的函数
     Args:
@@ -183,7 +180,6 @@ def detect_imageset_save_voc_annotations(detection_model,voc_image_paths,voc_xml
         voc_image_paths: VOC图像文件路径数组
         voc_xml_paths: VOC标签文件路径数组
         num_threads: 检测线程数,默认为1
-        confidence_threshold: 检测结果置信度阈值,用于判定检测结果是否写入XML文件,默认为0.1
     Returns:
     """
     # 多线程检测图像并生成VOC标签
@@ -201,35 +197,31 @@ def detect_imageset_save_voc_annotations(detection_model,voc_image_paths,voc_xml
         _detection_model = detection_model[i]
         start = end
         t = Thread(target=detect_batch_images_save_voc_annotations,
-                   args=(_detection_model,batch_voc_image_paths,batch_voc_xml_paths,confidence_threshold))
+                   args=(_detection_model,batch_voc_image_paths,batch_voc_xml_paths))
         t.start()
         threads.append(t)
     for t in threads:
         t.join()
 
-def detect_batch_images_save_voc_annotations(detection_model,batch_voc_image_paths,
-                                             batch_voc_xml_paths,confidence_threshold=0.1):
+def detect_batch_images_save_voc_annotations(detection_model,batch_voc_image_paths,batch_voc_xml_paths):
     """
     这是利用检测模型检测批量图像并生成VOC标签的函数
     Args:
         detection_model: 检测模型
         batch_voc_image_paths: 批量VOC图像文件路径数组
         batch_voc_xml_paths: 批量VOC标签文件路径数组
-        confidence_threshold: 检测结果置信度阈值,用于判定检测结果是否写入XML文件,默认为0.1
     Returns:
     """
     for i in tqdm(np.arange(len(batch_voc_image_paths))):
-        detect_single_image_save_voc_annotation(detection_model,batch_voc_image_paths[i],
-                                                batch_voc_xml_paths[i],confidence_threshold)
+        detect_single_image_save_voc_annotation(detection_model,batch_voc_image_paths[i],batch_voc_xml_paths[i])
 
-def detect_single_image_save_voc_annotation(detection_model,voc_image_path,voc_xml_path,confidence_threshold=0.1):
+def detect_single_image_save_voc_annotation(detection_model,voc_image_path,voc_xml_path):
     """
     这是利用检测模型检测单张图像并保存VOC数据标签的函数
     Args:
         detection_model: 检测模型实例
         voc_image_path: VOC图像文件路径
         voc_xml_path: VOC标签文件路径
-        confidence_threshold: 检测结果置信度阈值,用于判定检测结果是否写入XML文件,默认为0.1
     Returns:
     """
     # 初始化VOC标签写入类
@@ -242,21 +234,21 @@ def detect_single_image_save_voc_annotation(detection_model,voc_image_path,voc_x
     preds = detection_model.detect(image)
     if len(preds) > 0:
         for x1, y1, x2, y2, score, cls_id in preds:
-            if score > confidence_threshold:
-                x1 = int(round(x1))
-                y1 = int(round(y1))
-                x2 = int(round(x2))
-                y2 = int(round(y2))
-                cls_id = int(cls_id)
-                writer.addObject(class_names[cls_id], x1, y1, x2, y2)
+            x1 = int(round(x1))
+            y1 = int(round(y1))
+            x2 = int(round(x2))
+            y2 = int(round(y2))
+            cls_id = int(cls_id)
+            writer.addObject(class_names[cls_id], x1, y1, x2, y2)
         writer.save(voc_xml_path)
 
 def run_main():
     """
     这是主函数
     """
+    # 初始化参数
+    cfg = init_config(opt)
     # 初始化检测模型
-    cfg = load_yaml(opt.cfg)
     model_type = cfg["DetectionModel"]["model_type"].lower()
     logger = logger_config(cfg['log_path'], model_type)
     detection_models = []
@@ -276,8 +268,7 @@ def run_main():
     video = os.path.abspath(opt.video)
 
     # 检测图像
-    video2voc_dataset(logger, detection_models, video,result_dir,
-                      opt.interval,opt.num_threads,opt.confidence_threshold)
+    video2voc_dataset(logger, detection_models, video,result_dir,opt.interval,opt.num_threads)
 
 if __name__ == '__main__':
     run_main()

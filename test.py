@@ -12,7 +12,6 @@
 import os
 import cv2
 import json
-import argparse
 import numpy as np
 from tqdm import tqdm
 from datetime import datetime
@@ -20,35 +19,24 @@ from tabulate import tabulate
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
-from utils import load_yaml
 from utils import NpEncoder
 from utils import VOCDataset
 from utils import COCODataset
+from utils import ArgsParser
+from utils import save_yaml
+from utils import init_config
 from utils import logger_config
 from utils import draw_detection_results
 
-parser = argparse.ArgumentParser()
+parser = ArgsParser()
 parser.add_argument('--cfg', type=str, default='./config/detection.yaml', help='config yaml file path')
 parser.add_argument('--dataset_dir', type=str, default='./VOC2007', help='dataset directory')
 parser.add_argument('--dataset_type', type=str, default="voc",help='dataset type: voc or coco')
 parser.add_argument('--choice', type=str, default="val",help='VOC dataset choice')
 parser.add_argument('--result_dir', type=str, default="./result/eval/VOC2007", help='result save directory')
-parser.add_argument('--iou_threshold', type=float, default=0.5,help='iou threshold for nms')
-parser.add_argument('--confidence_threshold', type=float, default=0.001,help='confidence threshold')
 parser.add_argument('--save_image', action='store_true', help='save detection image')
 opt = parser.parse_args()
 
-def init_cfg(opt):
-    """
-    这是初始化配置参数字典的函数
-    Args:
-        opt: 参数字典
-    Returns:
-    """
-    cfg = load_yaml(opt.cfg)
-    cfg["DetectionModel"]['confidence_threshold'] = opt.confidence_threshold
-    cfg["DetectionModel"]['iou_threshold'] = opt.iou_threshold
-    return cfg
 def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='val',save_image=False):
     """
     这是对模型性能进行测试测试的函数
@@ -98,7 +86,9 @@ def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='
     image_cnt = 0
     gt_annotation_cnt = 0
     pred_annotation_cnt = 0
-    for batch_images, batch_gts, batch_image_paths in tqdm(test_dataloader):
+    for batch_images,batch_meta_data in tqdm(test_dataloader):
+        print(batch_meta_data)
+    #for batch_images, batch_gts, batch_image_paths in tqdm(test_dataloader):
         pred_results = detection_model.detect(batch_images,True)
         if len(pred_results) == 2:
             batch_preds, _detection_model_time_dict = pred_results
@@ -109,12 +99,14 @@ def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='
                 detection_model_time_dict['postprocess_time'].append(_detection_model_time_dict["postprocess_time"])
                 detection_model_time_dict['detect_time'].append(_detection_model_time_dict["detect_time"])
                 # 遍历每张图像的检测结果，并评估性能
-                for image, gts, preds, image_path in zip(batch_images, batch_gts, batch_preds, batch_image_paths):
+                #for image, gts, preds, image_path in zip(batch_images, batch_gts, batch_preds, batch_image_paths):
+                for image, meta_data,preds in zip(batch_images,batch_meta_data,batch_preds):
+                    image_path = meta_data['image_path']
+                    gts = meta_data['gt']
                     # 保存检测图片
                     if save_image:
                         _, image_name = os.path.split(image_path)
-                        #draw_image = draw_detection_results(image, preds, class_names, colors)
-                        draw_image = draw_detection_results(image, preds,colors)
+                        draw_image = draw_detection_results(image, preds, class_names, colors)
                         cv2.imwrite(os.path.join(detect_image_dir, image_name), draw_image)
                     # 初始化图像信息
                     h, w, c = np.shape(image)
@@ -130,12 +122,10 @@ def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='
                                            'id': gt_annotation_cnt})
                         gt_annotation_cnt += 1
                     # 初始化图像中每个预测结果
-                    for pred in preds:
-                        x1,y1,x2,y2 = pred['bbox']
-                        score = pred["score"]
-                        cls_id = pred["category_id"]
+                    for x1, y1, x2, y2, score, cls_id in preds:
                         bbox_w = x2 - x1
                         bbox_h = y2 - y1
+                        cls_id = int(cls_id)
                         detection_results.append({'image_id': image_cnt,
                                                   'iscrowd': 0,
                                                   'category_id': cls_id,
@@ -194,29 +184,22 @@ def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='
 
     # 计算每个类别的AP和AR指标，iou=0.5
     class_stats = []
+    eval_info_list = ["{0}\t{1}\t{2}".format("category name".rjust(15),"mAP@0.5".rjust(15),"mAR@0.5".rjust(15))]
     for i in range(len(class_names)):
         stats, print_info = summarize(evaluator, catId=i)
         ap50,ap75,ap95,ar50,ar75,ar95 =stats[1:7]
-        ap50_95 = stats[0]
-        ar50_95 = stats[-1]
-        class_stats.append([ap50, ar50,ap75,ar75,ap95,ar95,ap50_95,ar50_95])
-    class_stats_mean = np.mean(class_stats, 0)
-    class_stats.append(class_stats_mean)
-
-    # 初始化表格
-    result_table = []
-    class_names = class_names+['all']
-    for i in np.arange(len(class_names)):
-        result_table.append([class_names[i],*class_stats[i]])
-    result_table = tabulate(result_table,
-                            tablefmt="pipe", numalign="left",
-                            headers=["类别", "AP@0.5", "AR@0.5", "AP@0.75", "AR@0.75", "AP@0.95", "AR@0.95",
-                                     "AP@0.5:0.95", "AR@0.5:0.95"])
+        class_stats.append([ap50,ap75,ap95,ar50,ar75,ar95])
+        eval_info_list.append("{0}\t{1:15.4f}\t{2:15.4f}".format(class_names[i].rjust(15),ap50,ar50))
+    class_stats = np.array(class_stats)
+    class_stats = np.mean(class_stats, 0)
+    eval_info = "\n".join(eval_info_list)
 
     # 打印模型在测试集上的检测性能
     logger.info("检测模型在测试集上mAP@0.5={0:.4f},mAP@0.5:0.95={1:.4f}".format(map50, map))
+    logger.info("检测模型在测试集上mAP@0.5={0:.4f},mAR@0.5={1:.4f}".format(class_stats[0], class_stats[1]))
+    logger.info("检测模型在测试集上mAP@0.5:0.95={0:.4f},mAR@0.5:0.95={1:.4f}".format(map, mar))
     logger.info("检测模型在测试集上各个类别检测性能如下：")
-    logger.info(result_table)
+    logger.info(eval_info)
 
     # 保存结果到txt
     with open(result_txt_path, 'w+', encoding="utf-8") as f:
@@ -232,8 +215,10 @@ def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='
         f.write("测试集真实标签保存路径为：{0}\n".format(gt_json_result_path))
         f.write("测试集检测标签保存路径为：{0}\n".format(pred_json_result_path))
         f.write("检测模型在测试集上mAP@0.5={0:.4f},mAP@0.5:0.95={1:.4f}\n".format(map50,map))
+        f.write("检测模型在测试集上mAP@0.5={0:.4f},mAR@0.5={1:.4f}\n".format(class_stats[0],class_stats[1]))
+        f.write("检测模型在测试集上mAP@0.5:0.95={0:.4f},mAR@0.5:0.95={1:.4f}\n".format(map,mar))
         f.write("检测模型在测试集上各个类别检测性能如下：\n")
-        f.write(result_table)
+        f.write(eval_info)
 
 def summarize(self, catId=None):
     """
@@ -308,8 +293,8 @@ def run_main():
     """
     这是主函数
     """
-    # 初始化而皮脂参数字典
-    cfg = init_cfg(opt)
+    # 初始化参数
+    cfg = init_config(opt)
 
     # 初始化检测模型
     model_type = cfg["DetectionModel"]["model_type"].lower()
@@ -324,6 +309,12 @@ def run_main():
     # 初始化相关路径路径
     result_dir = os.path.abspath(opt.result_dir)
     dataset_dir = os.path.abspath(opt.dataset_dir)
+    if not os.path.exists(result_dir):
+        os.makedirs(result_dir)
+
+    # 保存参数配置文件
+    config_yaml_path = os.path.join(result_dir, "config.yaml")
+    save_yaml(cfg, config_yaml_path)
 
     # 对检测模型记性预热，tensorRT等模型前几次推理时间较长，影响评测结果
     logger.info("预热模型开始")
@@ -337,7 +328,8 @@ def run_main():
     logger.info("预热模型结束")
 
     # 测试检测性能
-    test(logger,detection_model,dataset_dir,result_dir,opt.dataset_type,opt.choice,opt.save_image)
+    test(logger,detection_model,dataset_dir,
+         result_dir,opt.dataset_type,opt.choice,opt.save_image)
 
 if __name__ == '__main__':
     run_main()
