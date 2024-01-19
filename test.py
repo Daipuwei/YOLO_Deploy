@@ -6,7 +6,7 @@
 # @Software: PyCharm
 
 """
-    这是在VOC格式的数据集上测试模型性能的脚本
+    这是在数据集上测试模型性能的脚本，支持VOC数据集和COCO数据集两种格式
 """
 
 import os
@@ -35,9 +35,12 @@ parser.add_argument('--dataset_type', type=str, default="voc",help='dataset type
 parser.add_argument('--choice', type=str, default="val",help='VOC dataset choice')
 parser.add_argument('--result_dir', type=str, default="./result/eval/VOC2007", help='result save directory')
 parser.add_argument('--save_image', action='store_true', help='save detection image')
+parser.add_argument('--export_time', action='store_true', help='export time')
+parser.add_argument('--print_detection_result', action='store_true', help='export time')
 opt = parser.parse_args()
 
-def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='val',save_image=False):
+def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='val',
+         save_image=False,export_time=False,print_detection_result=False):
     """
     这是对模型性能进行测试测试的函数
     Args:
@@ -48,6 +51,8 @@ def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='
         dataset_type: 数据集类型，默认为'voc',候选值为['voc','coco']
         mode：VOC数据集类型，默认为‘val’
         save_image: 是否保存检测结果图像标志量，默认为False
+        export_time: 是否输出模型推理时间，默认为False
+        print_detection_result: 是否打印检测结果，默认为False
     Returns:
     """
     # 初始化相关文件路径
@@ -87,55 +92,53 @@ def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='
     gt_annotation_cnt = 0
     pred_annotation_cnt = 0
     for batch_images,batch_meta_data in tqdm(test_dataloader):
-        print(batch_meta_data)
-    #for batch_images, batch_gts, batch_image_paths in tqdm(test_dataloader):
-        pred_results = detection_model.detect(batch_images,True)
-        if len(pred_results) == 2:
+        pred_results = detection_model.detect(batch_images,export_time,print_detection_result)
+        if export_time:
             batch_preds, _detection_model_time_dict = pred_results
-            if batch_size == 1:
-                batch_preds = [batch_preds]
-                detection_model_time_dict['preprocess_time'].append(_detection_model_time_dict["preprocess_time"])
-                detection_model_time_dict['inference_time'].append(_detection_model_time_dict["inference_time"])
-                detection_model_time_dict['postprocess_time'].append(_detection_model_time_dict["postprocess_time"])
-                detection_model_time_dict['detect_time'].append(_detection_model_time_dict["detect_time"])
-                # 遍历每张图像的检测结果，并评估性能
-                #for image, gts, preds, image_path in zip(batch_images, batch_gts, batch_preds, batch_image_paths):
-                for image, meta_data,preds in zip(batch_images,batch_meta_data,batch_preds):
-                    image_path = meta_data['image_path']
-                    gts = meta_data['gt']
-                    # 保存检测图片
-                    if save_image:
-                        _, image_name = os.path.split(image_path)
-                        draw_image = draw_detection_results(image, preds, class_names, colors)
-                        cv2.imwrite(os.path.join(detect_image_dir, image_name), draw_image)
-                    # 初始化图像信息
-                    h, w, c = np.shape(image)
-                    _, image_name = os.path.split(image_path)
-                    image_infos.append({'file_name': image_name, 'id': image_cnt, 'width': w, 'height': h})
-                    # 初始化图像每个gt信息
-                    for obj_name,x1,y1,bbox_w,bbox_h in gts:
-                        gt_results.append({'image_id': image_cnt,
-                                           'iscrowd': 0,
-                                           "bbox": [x1,y1,bbox_w,bbox_h],
-                                           'area': bbox_w*bbox_h,
-                                           "category_id": class_names.index(obj_name),
-                                           'id': gt_annotation_cnt})
-                        gt_annotation_cnt += 1
-                    # 初始化图像中每个预测结果
-                    for x1, y1, x2, y2, score, cls_id in preds:
-                        bbox_w = x2 - x1
-                        bbox_h = y2 - y1
-                        cls_id = int(cls_id)
-                        detection_results.append({'image_id': image_cnt,
-                                                  'iscrowd': 0,
-                                                  'category_id': cls_id,
-                                                  "bbox": [x1, y1, bbox_w, bbox_h],
-                                                  'area': bbox_w * bbox_h,
-                                                  'id': pred_annotation_cnt,
-                                                  'score': score})
-                        pred_annotation_cnt += 1
-                    image_cnt += 1
-
+        else:
+            batch_preds = pred_results
+        if batch_size == 1:
+            batch_preds = [batch_preds]
+            detection_model_time_dict['preprocess_time'].append(_detection_model_time_dict["preprocess_time"])
+            detection_model_time_dict['inference_time'].append(_detection_model_time_dict["inference_time"])
+            detection_model_time_dict['postprocess_time'].append(_detection_model_time_dict["postprocess_time"])
+            detection_model_time_dict['detect_time'].append(_detection_model_time_dict["detect_time"])
+        # 遍历每张图像的检测结果，并评估性能
+        for image, meta_data,preds in zip(batch_images,batch_meta_data,batch_preds):
+            image_path = meta_data['image_path']
+            gts = meta_data['gt']
+            # 保存检测图片
+            if save_image:
+               _, image_name = os.path.split(image_path)
+               draw_image = draw_detection_results(image, preds, class_names, colors)
+               cv2.imwrite(os.path.join(detect_image_dir, image_name), draw_image)
+            # 初始化图像信息
+            h, w, c = np.shape(image)
+            _, image_name = os.path.split(image_path)
+            image_infos.append({'file_name': image_name, 'id': image_cnt, 'width': w, 'height': h})
+            # 初始化图像每个gt信息
+            for obj_name,x1,y1,bbox_w,bbox_h in gts:
+                gt_results.append({'image_id': image_cnt,
+                                      'iscrowd': 0,
+                                      "bbox": [x1,y1,bbox_w,bbox_h],
+                                      'area': bbox_w*bbox_h,
+                                      "category_id": class_names.index(obj_name),
+                                      'id': gt_annotation_cnt})
+                gt_annotation_cnt += 1
+            # 初始化图像中每个预测结果
+            for x1, y1, x2, y2, score, cls_id in preds:
+                bbox_w = x2 - x1
+                bbox_h = y2 - y1
+                cls_id = int(cls_id)
+                detection_results.append({'image_id': image_cnt,
+                                          'iscrowd': 0,
+                                          'category_id': cls_id,
+                                          "bbox": [x1, y1, bbox_w, bbox_h],
+                                          'area': bbox_w * bbox_h,
+                                          'id': pred_annotation_cnt,
+                                          'score': score})
+                pred_annotation_cnt += 1
+            image_cnt += 1
     # 计算检测时间
     detection_model_time_dict['preprocess_time'] = np.mean(detection_model_time_dict["preprocess_time"])
     detection_model_time_dict['inference_time'] = np.mean(detection_model_time_dict["inference_time"])

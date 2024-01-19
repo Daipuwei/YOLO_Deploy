@@ -21,16 +21,17 @@ from utils import logger_config
 from utils import draw_detection_results
 
 IMG_FORMATS = ['.bmp', '.dng', '.jpeg', '.jpg', '.mpo', '.png', '.tif', '.tiff', '.webp']  # include image suffixes
-VID_FORMATS = ['.asf', '.avi', '.gif', '.m4v', '.mkv', '.mov', '.mp4', '.mpeg', '.mpg', '.ts', '.wmv']  # include video suffixes
+VID_FORMATS = ['.asf', '.avi', '.gif', '.m4v', '.mkv', '.mov', '.mp4', '.mpeg', '.mpg', '.ts', '.wmv','.dav']  # include video suffixes
 
 parser = ArgsParser()
 parser.add_argument('--cfg', type=str, default='./config/detection.yaml', help='config yaml file path')
 parser.add_argument('--source', type=str, default='./video', help='image path or image directory or video path or video directory')
 parser.add_argument('--result_dir', type=str, default="./result", help='video detection result save directory')
 parser.add_argument('--interval', type=int, default=1, help='video interval')
+parser.add_argument('--print_detection_result', action='store_true', help='export time')
 opt = parser.parse_args()
 
-def detect(logger,detection_model,source,result_dir,interval=1):
+def detect(logger,detection_model,source,result_dir,interval=1,print_detection_result=False):
     """
     这是利用检测模型检测图像或者视频的函数
     Args:
@@ -39,6 +40,7 @@ def detect(logger,detection_model,source,result_dir,interval=1):
         source: 图像文件或者图像文件夹或者视频文件路径或者视频文件夹
         result_dir: 结果保存路径
         interval: 视频抽帧间隔,默认为1s
+        print_detection_result: 是否打印检测结果，默认为False
     Returns:
     """
     # 初始化视频路径
@@ -80,8 +82,8 @@ def detect(logger,detection_model,source,result_dir,interval=1):
         for i, (image_path, result_path) in tqdm(enumerate(zip(image_paths, image_result_paths))):
             logger.info("开始检测图片[{0}/{1}]".format(i+1, len(image_paths)))
             image = cv2.imread(image_path)
-            pred = detection_model.detect(image)
-            draw_image = draw_detection_results(image, pred, class_names, colors)
+            pred = detection_model.detect(image,print_detection_result=print_detection_result)
+            draw_image = draw_detection_results(image, pred, colors)
             cv2.imwrite(result_path, draw_image)
 
     # 检测视频
@@ -89,7 +91,7 @@ def detect(logger,detection_model,source,result_dir,interval=1):
         logger.info("共有{0}个视频需要检测".format(len(video_paths)))
         for i,video_path in tqdm(enumerate(video_paths)):
             logger.info("开始检测视频[{0}/{1}]".format(i+1,len(video_paths)))
-            detection_model.detect_video(video_path, result_dir,interval)
+            detection_model.detect_video(video_path, result_dir,interval,print_detection_result=print_detection_result)
 
 def run_main():
     """
@@ -102,10 +104,10 @@ def run_main():
     logger = logger_config(cfg['log_path'], model_type)
     if model_type == 'yolov5':
         from model import YOLOv5
-        detection_model = YOLOv5(logger=logger, cfg=cfg)
+        detection_model = YOLOv5(logger=logger, cfg=cfg["DetectionModel"])
     else:
         from model import YOLOv5
-        detection_model = YOLOv5(logger=logger, cfg=cfg)
+        detection_model = YOLOv5(logger=logger, cfg=cfg["DetectionModel"])
 
     # 初始化相关路径路径
     # time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -115,7 +117,7 @@ def run_main():
     interval = opt.interval
 
     # 检测
-    detect(logger,detection_model,source,result_dir,interval)
+    detect(logger,detection_model,source,result_dir,interval,opt.print_detection_result)
 
 if __name__ == '__main__':
     run_main()

@@ -1,23 +1,25 @@
 # -*- coding: utf-8 -*-
-# @Time    : 2023/4/1 下午11:00
+# @Time    : 2024/1/15 下午10:34
 # @Author  : DaiPuWei
 # @Email   : daipuwei@qq.com
-# @File    : imageset2voc_dataset.py
+# @File    : imageset2labelme_dataset.py
 # @Software: PyCharm
 
 """
-    这是将图像集利用检测模型进行预标注转换为VOC数据集的脚本
+   这是将图像集利用检测模型进行预标注转换为Labelme数据集的脚本
 """
 
 import os
 import cv2
+import json
 import shutil
+import labelme
 import numpy as np
 from tqdm import tqdm
 from threading import Thread
 from datetime import datetime
-from pascal_voc_writer import Writer
 
+from utils import NpEncoder
 from utils import ArgsParser
 from utils import init_config
 from utils import logger_config
@@ -32,18 +34,17 @@ parser.add_argument('--num_threads', type=int, default=1, help='number of detect
 parser.add_argument('--print_detection_result', action='store_true', help='export time')
 opt = parser.parse_args()
 
-def imageset2voc_dataset(logger,detection_models,imageset,result_dir,num_threads=1):
+def imageset2labelme_dataset(logger,detection_models,imageset,result_dir,num_threads=1,print_detection_result=False):
     """
-    这是利用检测模型对图像(集)进行预标注并生成VOC数据集的函数
+    这是利用检测模型对图像(集)进行预标注并生成Labelme数据集的函数
     Args:
         logger: 日志类实例
         detection_models: 检测模型实例数组
         imageset: (批量)图像集文件夹
         result_dir: 结果保存路径
-        interval: 视频抽帧间隔，默认为1s
+        print_detection_result: 是否打印检测结果，默认为False
     Returns:
     """
-    # 初始化视频路径
     result_dir = os.path.abspath(result_dir)
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
@@ -60,9 +61,10 @@ def imageset2voc_dataset(logger,detection_models,imageset,result_dir,num_threads
         else:
             is_single_imageset = False
             break
+    # 初始化相关路径
     image_paths = []
-    voc_image_paths = []
-    voc_xml_paths = []
+    labelme_image_paths = []
+    labelme_json_paths = []
     if is_single_imageset:                          # 单个图像数据集
         imageset_dirs = [imageset]
     else:                                           # 批量图像数据集
@@ -74,42 +76,40 @@ def imageset2voc_dataset(logger,detection_models,imageset,result_dir,num_threads
     num_imageset = len(imageset_dirs)
     for imageset_dir in imageset_dirs:
         _, imageset_name = os.path.split(imageset_dir)
-        voc_dataset_dir = os.path.join(result_dir, imageset_name)
-        voc_image_dir = os.path.join(voc_dataset_dir, "JPEGImages")
-        voc_annotation_dir = os.path.join(voc_dataset_dir, "Annotations")
-        if not os.path.exists(voc_image_dir):
-            os.makedirs(voc_image_dir)
-        if not os.path.exists(voc_annotation_dir):
-            os.makedirs(voc_annotation_dir)
+        labelme_dataset_dir = os.path.join(result_dir, imageset_name)
+        labelme_image_dir = os.path.join(labelme_dataset_dir, "images")
+        if not os.path.exists(labelme_image_dir):
+            os.makedirs(labelme_image_dir)
         for i, image_name in enumerate(os.listdir(imageset_dir)):
             image_paths.append(os.path.join(imageset_dir, image_name))
-            voc_image_paths.append(os.path.join(voc_image_dir, "{0}_frame{1:08d}.jpg".format(imageset_name, i)))
-            voc_xml_paths.append(os.path.join(voc_annotation_dir, "{0}_frame{1:08d}.xml".format(imageset_name, i)))
+            labelme_image_paths.append(os.path.join(labelme_image_dir, "{0}_frame{1:08d}.jpg".format(imageset_name, i)))
+            labelme_json_paths.append(os.path.join(labelme_image_dir, "{0}_frame{1:08d}.json".format(imageset_name, i)))
     image_paths = np.array(image_paths)
-    voc_image_paths = np.array(voc_image_paths)
-    voc_xml_paths = np.array(voc_xml_paths)
+    labelme_image_paths = np.array(labelme_image_paths)
+    labelme_json_paths = np.array(labelme_json_paths)
     logger.info("结束初始化图像文件")
-    logger.info("共有{}个图像集需要转换成VOC数据集，总计图像{}张".format(num_imageset,len(image_paths)))
+    logger.info("共有{}个图像集需要转换成Labelme数据集，总计图像{}张".format(num_imageset,len(image_paths)))
 
-    # 检测图像进行预标注并生成VOC数据集标签
+    # 检测图像进行预标注并生成Labelme数据集标签
     logger.info("图像检测与预标注开始")
-    prelabel_imageset_save_voc_dataset(detection_models,image_paths,voc_image_paths,voc_xml_paths,num_threads)
+    prelabel_imageset_save_labelme_dataset(detection_models,image_paths,labelme_image_paths,labelme_json_paths,num_threads,print_detection_result)
     logger.info("图像检测与预标注结束")
 
 
-def prelabel_imageset_save_voc_dataset(detection_models,image_paths,voc_image_paths,voc_xml_paths,num_threads=1):
+def prelabel_imageset_save_labelme_dataset(detection_models,image_paths,labelme_image_paths,labelme_json_paths,num_threads=1,print_detection_result=False):
     """
-    这是检测图像集进行预标注并保存VOC数据集格式的函数
+    这是检测图像集进行预标注并保存为labelme数据集格式的函数
     Args:
         detection_models: 检测模型实例数组
         image_paths: 图像路径数组
-        voc_image_paths: VOC图像文件路径数组
-        voc_xml_paths: VOC标签文件路径数组
+        labelme_image_paths: Labelme数据集图像文件路径数组
+        labelme_json_paths: Labelme数据集标签文件路径数组
         num_threads: 检测线程数,默认为1
+        print_detection_result: 是否打印检测结果，默认为False
     Returns:
     """
     # 多线程检测图像并生成VOC标签
-    size = len(voc_image_paths)
+    size = len(labelme_image_paths)
     batch_size = size // num_threads
     start = 0
     threads = []
@@ -119,64 +119,79 @@ def prelabel_imageset_save_voc_dataset(detection_models,image_paths,voc_image_pa
         else:
             end = size
         batch_image_paths = image_paths[start:end]
-        batch_voc_image_paths = voc_image_paths[start:end]
-        batch_voc_xml_paths = voc_xml_paths[start:end]
+        batch_labelme_image_paths = labelme_image_paths[start:end]
+        batch_labelme_json_paths = labelme_json_paths[start:end]
         detection_model = detection_models[i]
         start = end
         t = Thread(target=detect_batch_images,
                    args=(detection_model,batch_image_paths,
-                         batch_voc_image_paths,batch_voc_xml_paths))
+                         batch_labelme_image_paths,batch_labelme_json_paths,print_detection_result))
         t.start()
         threads.append(t)
     for t in threads:
         t.join()
 
-
-def detect_batch_images(detection_model,batch_image_paths,batch_voc_image_paths,batch_voc_xml_paths):
+def detect_batch_images(detection_model,batch_image_paths,
+                        batch_labelme_image_paths,batch_labelme_json_paths,print_detection_result=False):
     """
-    这是利用检测模型检测批量图像进行预标注并保存为VOC数据集的函数
+    这是利用检测模型检测批量图像进行预标注并保存为Labelme数据集格式的函数
     Args:
         detection_model: 检测模型
         batch_image_paths: 批量文件路径数组
-        batch_voc_image_paths: 批量VOC图像文件路径数组
-        batch_voc_xml_paths: 批量VOC标签文件路径数组
+        batch_labelme_image_paths: 批量Labelme数据集图像文件路径数组
+        batch_labelme_json_paths: 批量Labelme数据集标签文件路径数组
+        print_detection_result: 是否打印检测结果，默认为False
     Returns:
     """
-    for i in tqdm(np.arange(len(batch_voc_image_paths))):
+    for i in tqdm(np.arange(len(batch_labelme_image_paths))):
         detect_single_image(detection_model,batch_image_paths[i],
-                            batch_voc_image_paths[i],batch_voc_xml_paths[i])
+                            batch_labelme_image_paths[i],batch_labelme_json_paths[i],print_detection_result)
 
-def detect_single_image(detection_model,image_path,voc_image_path,voc_xml_path):
+def detect_single_image(detection_model,image_path,labelme_image_path,labelme_json_path,print_detection_result=False):
     """
-    这是利用检测模型检测单张图像进行预标注并保存为VOC数据集的函数
+    这是利用检测模型检测单张图像进行预标注并保存为Labelme数据集格式的函数
     Args:
         detection_model: 检测模型实例
         image_path: 图像文件路径
-        voc_image_path: VOC图像文件路径
-        voc_xml_path: VOC标签文件路径
+        labelme_image_path: labelme数据集图像文件路径
+        labelme_json_path: labelme数据集标签文件路径
+        print_detection_result: 是否打印检测结果，默认为False
     Returns:
     """
-    # 初始化VOC标签写入类
+    # 复制图像
+    shutil.copy(image_path,labelme_image_path)
+
+    # 检测图像并将检测结果
+    _,image_name = os.path.split(image_path)
     image = cv2.imread(image_path)
     h, w, c = np.shape(image)
-    writer = Writer(voc_image_path,w,h)
+    outputs = detection_model.detect(image,export_time=False,print_detection_result=print_detection_result)
 
-    # 复制图像
-    shutil.copy(image_path,voc_image_path)
+    # 将检测结果
+    json_data = {"version": labelme.__version__,
+                 "flags": {},
+                 "shapes": [],
+                 "imagePath": image_name,
+                 "imageData": None,
+                 "imageHeight": h,
+                 "imageWidth": w}
+    for output in outputs:
+        x1,y1,x2,y2 = output['bbox']
+        label = output['cls_name']
+        json_data['shapes'].append({
+             "label": label,
+             "points": [[x1, y1], [x2, y2]],
+             "group_id": None,
+             "shape_type": "rectangle",
+             "flags": {},
+        })
 
-    # 检测图像并将检测结果写入XML
-    preds = detection_model.detect(image)
-    if len(preds) > 0:
-        for pred in preds:
-            x1, y1, x2, y2 = pred['bbox']
-            score = pred['score']
-            cls_name = pred['cls_name']
-            x1 = int(round(x1))
-            y1 = int(round(y1))
-            x2 = int(round(x2))
-            y2 = int(round(y2))
-            writer.addObject(cls_name, x1, y1, x2, y2)
-    writer.save(voc_xml_path)
+    # 将识别结果写入json
+    with open(labelme_json_path, 'w', encoding='utf-8') as f:
+        json_data = json.dumps(json_data, indent=4, cls=NpEncoder,
+                               separators=(',', ': '), ensure_ascii=False)
+        f.write(json_data)
+
 
 def run_main():
     """
@@ -205,7 +220,7 @@ def run_main():
         os.makedirs(result_dir)
 
     # 检测图像
-    imageset2voc_dataset(logger, detection_models, imageset,result_dir,opt.num_threads)
+    imageset2labelme_dataset(logger, detection_models, imageset,result_dir,opt.num_threads)
 
 if __name__ == '__main__':
     run_main()
