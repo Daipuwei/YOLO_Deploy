@@ -6,105 +6,68 @@
 # @Software: PyCharm
 
 """
-    这是定义检测模型基础类的函数
+    这是定义检测模型基础类的脚本
 """
 
 import os
-import colorsys
 
-class DetectionModel:
+from engine.onnx import ONNX_Engine
+from engine.tensorrt import TensorRT_Engine
+from utils.detection_utils import random_generate_colors
 
-    def __init__(self, logger, onnx_model_path, class_names,input_shape,
-                 model_type="yolov5", engine_type='onnx',engine_mode="fp32",
-                 confidence_threshold=0.5, iou_threshold=0.5,
-                 gpu_id=0, calibrator_image_dir=None, calibrator_cache_path=None):
+class DetectionModel(object):
+
+    def __init__(self,logger,engine_model_path,class_names,model_type="yolov5",
+                 engine_type='onnx',confidence_threshold=0.5,iou_threshold=0.5,gpu_id=0):
         """
         这是抽象检测模型类的初始化函数
         Args:
             logger: 日志类实例
-            onnx_model_path: onnx模型文件路径
+            engine_model_path: 模型文件路径
             class_names: 目标分类名称数组
             model_type: 模型类型,默认为'yolov5'
             engine_type: 推理引擎类型，默认为'onnx'
-            engine_mode: 推理引擎模式，默认为'fp32'
-            input_name: 输入节点名称
-            output_name: 输出节点名称
-            input_shape: 输入shape
-            output_shape: 输出shape
             confidence_threshold: 置信度阈值，默认为0.5
             iou_threshold: iou阈值，默认为0.5
-            gpu_id:gpu设备号,默认为0
-            calibrator_image_dir: 校准图像文件夹路径,默认为None
-            calibrator_cache_path: 校准缓存文件路径,默认为None
+            gpu_id: gpu设备号,默认为0
         """
         # 初始化模型参数
         self.logger = logger
-        self.onnx_model_path = os.path.abspath(onnx_model_path)
+        self.engine_model_path = os.path.abspath(engine_model_path)
         self.class_names = class_names
         self.model_type = model_type
         self.engine_type = engine_type.lower()
-        self.engine_mode = engine_mode.lower()
-        self.input_shape = input_shape
         self.confidence_threshold = confidence_threshold
         self.iou_threshold = iou_threshold
-        self.batchsize, self.c, self.h, self.w = input_shape
         self.image_num = 0
         self.gpu_id = gpu_id
-        self.calibrator_image_dir = calibrator_image_dir
-        self.calibrator_cache_path = calibrator_cache_path
-
-        # 初始化不同引擎的模型路径
-        dir,model_name = os.path.split(self.onnx_model_path)
-        fname,ext = os.path.splitext(model_name)
-        if self.engine_type == 'onnx':
-            self.engine_model_path = self.onnx_model_path
-        elif self.engine_type == 'tensorrt':
-            self.engine_model_path = os.path.join(dir,fname+".trt")
-        else:
-            self.engine_model_path = self.onnx_model_path
 
         # 初始化颜色列表
-        hsv_tuples = [(x / len(self.class_names), 1., 1.)
-                      for x in range(len(self.class_names))]
-        self.colors = list(map(lambda x: colorsys.hsv_to_rgb(*x), hsv_tuples))
-        self.colors = list(map(lambda x: (int(x[0] * 255), int(x[1] * 255), int(x[2] * 255)), self.colors))
+        self.colors = random_generate_colors(len(self.class_names))
 
         # 初始化推理引擎
         if self.engine_type == 'onnx':
-            from engine import ONNX_Engine
             self.engine = ONNX_Engine(logger=logger,
-                                      onnx_model_path=self.engine_model_path)
+                                      onnx_model_pat=self.engine_model_path)
         elif self.engine_type == 'tensorrt':
-            from engine import TensorRT_Engine
-            if self.engine_mode == 'int8' or self.calibrator_cache_path is not None \
-                    or self.calibrator_image_dir is not None:
-                if self.model_type == "yolov5":
-                    from utils import YOLOv5_Calibrator
-                    trt_int8_calibrator = YOLOv5_Calibrator(logger=logger,
-                                                            input_shape=self.input_shape,
-                                                            calibrator_image_dir=self.calibrator_image_dir,
-                                                            calibrator_cache_path=self.calibrator_cache_path)
-                else:
-                    from utils import YOLOv5_Calibrator
-                    trt_int8_calibrator = YOLOv5_Calibrator(logger=logger,
-                                                            input_shape=self.input_shape,
-                                                            calibrator_image_dir=self.calibrator_image_dir,
-                                                            calibrator_cache_path=self.calibrator_cache_path)
-            else:
-                trt_int8_calibrator = None
-            self.engine = TensorRT_Engine(logger=logger,
-                                          onnx_model_path=self.onnx_model_path,
+            self.engine = TensorRT_Engine(logger=self.logger,
                                           tensorrt_model_path=self.engine_model_path,
-                                          gpu_idx=self.gpu_id,
-                                          mode=self.engine_mode,
-                                          trt_int8_calibrator=trt_int8_calibrator)
+                                          gpu_idx=self.gpu_id)
         else:
-            from engine.onnx.onnx_model import ONNX_Engine
-            self.engine = ONNX_Engine(logger=logger,
+            self.engine = ONNX_Engine(logger=self.logger,
                                       onnx_model_path=self.engine_model_path)
 
+        # 初始化模型输入shape
+        input_shape = self.engine.get_input_shape()[0]
+        if input_shape[1] <= 3:
+            self.is_nchw = True
+            self.batch_size, self.c, self.h, self.w = input_shape
+        else:
+            self.is_nchw = False
+            self.batch_size, self.h, self.w, self.c = input_shape
+
     def get_batch_size(self):
-        return self.batchsize
+        return self.batch_size
 
     def get_class_names(self):
         return self.class_names
@@ -138,7 +101,7 @@ class DetectionModel:
         这是检测的图像函数
         Args:
             image: 输入图像，可以为单张图像也可以为图像数组
-            export_time: 是否输出时间信息标志位，默认为False
+            export_time: 是否输出时间标志位,默认为False
         Returns:
         """
         pass

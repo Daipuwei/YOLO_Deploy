@@ -50,35 +50,64 @@ source ~/.bashrc
 ---
 # 部署
 部署阶段，目前支持检测图像(集)和视频(集)，支持在VOC和COCO格式的目标检测数据集上评估检测模型性能，对图片集和视频进行预标生成VOC数据集格式标签．
+## ONNX转TensorRT模型
+实现使用`Netron`可视化工具查看需要做转换的ONNX模型文件，获取输入尺寸和节点数据类型，然后根据开发需要生成对应的fp32、fp16或者int8模型，命令如下：
+```bash
+# fp32
+python onnx2tensorrt.py --onnx_model_path ./model_data/yolov5s.onnx \
+       --tensorrt_model_path ./model_data/yolov5s.trt \
+       --input_shape 1 3 640 640 \
+       --model_type yolov5 \
+       --mode fp32 \
+       --data_type float32
+
+# fp16
+python onnx2tensorrt.py --onnx_model_path ./model_data/yolov5s.onnx \
+       --tensorrt_model_path ./model_data/yolov5s.trt \
+       --input_shape 1 3 640 640 \
+       --model_type yolov5 \
+       --mode fp16 \
+       --data_type float32
+
+# int8
+python onnx2tensorrt.py --onnx_model_path ./model_data/yolov5s.onnx \
+       --tensorrt_model_path ./model_data/yolov5s.trt \
+       --input_shape 1 3 640 640 \
+       --model_type yolov5 \
+       --mode int8 \
+       --calibrator_image_dir ./image/coco_calib/ \
+       --calibrator_table_path ./model_data/yolov5s_coco_calibrator_table.cache \
+       --data_type float32
+```
 ## 检测图像和视频
 在`detect.py`中可以根据`-o`选项自定义相关参数来对yaml配置文件中的参数进行更新．
 ```bash
-# 图片
+# 检测图片(集)
 python detect.py --cfg ./config/detection.yaml \
-       --source ./image/ \
-       --result_dir ./result/image/yolov5s/confidence_threshold=0.3_iou_threshold=0.5 \
-       -o DetectionModel.model_type=yolov5 DetectionModel.model_path=./model_data/yolov5s.onnx DetectionModel.class_names_path=./model_data/coco_names.txt DetectionModel.input_shape=[1,3,640,640] DetectionModel.confidence_threshold=0.3 DetectionModel.iou_threshold=0.5
+       --source ./image/coco_calib/ \
+       --result_dir ./result/coco_calib/yolov5s.trt.fp16 \
+       -o DetectionModel.model_type=yolov5 DetectionModel.engine_model_path=./model_data/yolov5s.trt.fp16 DetectionModel.confidence_threshold=0.5
 
-# 视频,逐帧检测
+# 检测视频(集)， 逐帧检测
 python detect.py --cfg ./config/detection.yaml \
-       --source ./video/1.mp4 \
-       --result_dir ./result/video/yolov5s/confidence_threshold=0.3_iou_threshold=0.5 \
-       --interval -1
-       -o DetectionModel.model_type=yolov5 DetectionModel.model_path=./model_data/yolov5s.onnx DetectionModel.class_names_path=./model_data/coco_names.txt DetectionModel.input_shape=[1,3,640,640] DetectionModel.confidence_threshold=0.3 DetectionModel.iou_threshold=0.5
+       --source ./video/1.dav \
+       --result_dir ./result/video/yolov5s.trt.fp16 \
+       --interval -1 \
+       -o DetectionModel.model_type=yolov5 DetectionModel.engine_model_path=./model_data/yolov5s.trt.fp16 DetectionModel.confidence_threshold=0.1
 
-# 视频,隔秒检测
+# 检测视频(集)，隔秒检测
 python detect.py --cfg ./config/detection.yaml \
-       --source ./video/1.mp4 \
-       --result_dir ./result/video/yolov5s/confidence_threshold=0.3_iou_threshold=0.5 \
-       --interval 1
-       -o DetectionModel.model_type=yolov5 DetectionModel.model_path=./model_data/yolov5s.onnx DetectionModel.class_names_path=./model_data/coco_names.txt DetectionModel.input_shape=[1,3,640,640] DetectionModel.confidence_threshold=0.3 DetectionModel.iou_threshold=0.5
+       --source ./video/1.dav \
+       --result_dir ./result/video/yolov5s.trt.fp16 \
+       --interval 1 \
+       -o DetectionModel.model_type=yolov5 DetectionModel.engine_model_path=./model_data/yolov5s.trt.fp16 DetectionModel.confidence_threshold=0.1
 
 # 图片或者图片文件夹或者视频或者视频文件夹或者任意组合
 python detect.py --cfg ./config/detection.yaml \
-       --source ./video/ \
-       --result_dir ./result/image_video/yolov5s/confidence_threshold=0.3_iou_threshold=0.5 \
-       --interval -1
-       -o DetectionModel.model_type=yolov5 DetectionModel.model_path=./model_data/yolov5s.onnx DetectionModel.class_names_path=./model_data/coco_names.txt DetectionModel.input_shape=[1,3,640,640] DetectionModel.confidence_threshold=0.3 DetectionModel.iou_threshold=0.5
+       --source ./image_video/ \
+       --result_dir ./result/image_video/yolov5s.trt.fp16 \
+       --interval -1 \
+       -o DetectionModel.model_type=yolov5 DetectionModel.engine_model_path=./model_data/yolov5s.trt.fp16 DetectionModel.confidence_threshold=0.1
 ```
 
 ## 评估模型性能
@@ -86,41 +115,62 @@ python detect.py --cfg ./config/detection.yaml \
 ```bash
 # COCO格式数据集
 python test.py --cfg ./config/detection.yaml \
-       --dataset_dir ../COC2017 \
-       --result_dir ./result/COC2017/yolov5s \
-       --choice 'val'  \
-       --dataset_type 'coco' \
+       --dataset_dir ./coco2014 \
+       --dataset_type coco \
+       --choice val \
+       --result_dir ./result/coco2014/yolov5s.trt.fp16 \
        --save_image \
-       -o DetectionModel.model_type=yolov5 DetectionModel.model_path=./model_data/yolov5s.onnx DetectionModel.class_names_path=./model_data/coco_names.txt DetectionModel.input_shape=[1,3,640,640] DetectionModel.confidence_threshold=0.001 DetectionModel.iou_threshold=0.5
+       --export_time \
+       -o DetectionModel.model_type=yolov5 DetectionModel.engine_model_path=./model_data/yolov5s.trt.fp16 DetectionModel.confidence_threshold=0.001 DetectionModel.iou_threshold=0.5
 
 # VOC格式数据集
 python test.py --cfg ./config/detection.yaml \
-       --dataset_dir ../VOC2007 \
-       --result_dir ./result/VOC2007/yolov5s \
-       --choice 'val'  \
-       --dataset_type 'voc' \
+       --dataset_dir ./voc2012 \
+       --dataset_type voc \
+       --choice val \
+       --result_dir ./result/coco2014/yolov5s.trt.fp16 \
        --save_image \
-       -o DetectionModel.model_type=yolov5 DetectionModel.model_path=./model_data/yolov5s.onnx DetectionModel.class_names_path=./model_data/voc_names.txt DetectionModel.input_shape=[1,3,640,640] DetectionModel.confidence_threshold=0.001 DetectionModel.iou_threshold=0.5
+       --export_time \
+       -o DetectionModel.model_type=yolov5 DetectionModel.engine_model_path=./model_data/yolov5s.trt.fp16 DetectionModel.confidence_threshold=0.001 DetectionModel.iou_threshold=0.5
+
 ```
 
-## 图像视频预标注
+## 图像视频预标注成VOC数据集
 在`video2voc_dataset.py`和`imageset2voc_dataset.py`中可以根据`-o`选项自定义相关参数来对yaml配置文件中的参数进行更新．
 ```bash
 # 视频转VOC数据集,并进行预标注
 python video2voc_dataset.py --cfg ./config/detection.yaml \
        --video ./video/ \
-       --result_dir ./result/video \
-       --interval 1 \
-       --num_threads 1 \
-       -o DetectionModel.model_type=yolov5 DetectionModel.model_path=./model_data/yolov5s.onnx DetectionModel.class_names_path=./model_data/coco_names.txt DetectionModel.input_shape=[1,3,640,640] DetectionModel.confidence_threshold=0.3 DetectionModel.iou_threshold=0.5
+       --result_dir ./result_dir/video \
+       --num_threads 4 \
+       --print_detection_result \
+       -o DetectionModel.model_type=yolov5 DetectionModel.engine_model_path=./model_data/yolov5s.trt.fp16 DetectionModel.confidence_threshold=0.5 DetectionModel.iou_threshold=0.5
 
 # 图像集转VOC数据集,并进行预标注
 python imageset2voc_dataset.py --cfg ./config/detection.yaml \
-       --imageset ./image/ \
-       --result_dir ./result \
+       --imageset ./image/coco_calib/ \
+       --result_dir ./result_dir/ \
        --num_threads 4 \
-       --confidence_threshold 0.1
-       -o DetectionModel.model_type=yolov5 DetectionModel.model_path=./model_data/yolov5s.onnx DetectionModel.class_names_path= DetectionModel.input_shape=[1,3,640,640] DetectionModel.confidence_threshold=0.001 DetectionModel.iou_threshold=0.5
+       -o DetectionModel.model_type=yolov5 DetectionModel.engine_model_path=./model_data/yolov5s.trt.fp16 DetectionModel.confidence_threshold=0.5 DetectionModel.iou_threshold=0.5
+```
+
+## 图像视频预标注成Labelme数据集
+在`video2labelme_dataset.py`和`imageset2labelme_dataset.py`中可以根据`-o`选项自定义相关参数来对yaml配置文件中的参数进行更新．
+```bash
+# 视频转VOC数据集,并进行预标注
+python video2labelme_dataset.py --cfg ./config/detection.yaml \
+       --video ./video/ \
+       --result_dir ./result_dir/video \
+       --num_threads 4 \
+       --print_detection_result \
+       -o DetectionModel.model_type=yolov5 DetectionModel.engine_model_path=./model_data/yolov5s.trt.fp16 DetectionModel.confidence_threshold=0.5 DetectionModel.iou_threshold=0.5
+
+# 图像集转VOC数据集,并进行预标注
+python imageset2labelme_dataset.py --cfg ./config/detection.yaml \
+       --imageset ./image/coco_calib/ \
+       --result_dir ./result_dir/ \
+       --num_threads 4 \
+       -o DetectionModel.model_type=yolov5 DetectionModel.engine_model_path=./model_data/yolov5s.trt.fp16 DetectionModel.confidence_threshold=0.5 DetectionModel.iou_threshold=0.5
 ```
 
 ## VOC转COCO

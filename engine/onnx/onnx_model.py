@@ -20,39 +20,45 @@ class ONNX_Engine(object):
         """
         这是ONNXRuntime推理引擎的初始化函数
         Args:
+            logger： 日志类实例
             onnx_model_path: ONNX模型文件路径
-            input_name: 输入节点名称
-            output_name: 输出节点名称
-            input_shape: 输入节点shape
-            output_shape: 输出节点shape
         """
+        assert not os.path.exists(onnx_model_path), "ONNX模型不存在：{0}".format(onnx_model_path)
         # 初始化模型参数
         self.logger = logger
         self.onnx_model_path = onnx_model_path
         self.input_name = []
-        self.output_name = []
         self.input_shape = []
+        self.input_type = []
+        self.output_name = []
         self.output_shape = []
 
         # 初始化ONNXRuntime推理引擎
-        if os.path.exists(self.onnx_model_path):
-            session_option = rt.SessionOptions()
-            session_option.log_severity_level = 3
-            # 初始化引擎
-            self.session = rt.InferenceSession(self.onnx_model_path, sess_options=session_option,
-                                                providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
-            # 初始化输入输出名称和形状
-            input_tensors = self.session.get_inputs()
-            for input_tensor in input_tensors:
-                self.input_name.append(input_tensor.name)
-                self.input_shape.append(input_tensor.shape)
-            output_tensors = self.session.get_outputs()
-            for output_tensor in output_tensors:
-                self.output_name.append(output_tensor.name)
-                self.output_shape.append(output_tensor.shape)
-        else:
-            self.logger.info("ONNX文件不存在：{0}".format(self.onnx_model_path))
-            sys.exit()
+        session_option = rt.SessionOptions()
+        session_option.log_severity_level = 3
+        # 初始化引擎
+        self.session = rt.InferenceSession(self.onnx_model_path, sess_options=session_option,
+                                           providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+        # 初始化输入输出名称和形状
+        for input_tensor in self.session.get_inputs():
+            self.input_name.append(input_tensor.name)
+            self.input_shape.append(input_tensor.shape)
+            self.input_type.append(input_tensor.type)
+
+        # 输出名称和输出形状都没指定时才做读取输出节点信息
+        for output_tensor in self.session.get_outputs():
+            self.output_name.append(output_tensor.name)
+            self.output_shape.append(output_tensor.shape)
+
+    def get_input_shape(self):
+        return self.input_shape
+
+    def __del__(self):
+        del self.input_shape
+        del self.input_name
+        del self.output_shape
+        del self.output_name
+        del self.session
 
     def inference(self,input_tensor):
         """
@@ -61,17 +67,18 @@ class ONNX_Engine(object):
             input_tensor: 输入张量
         Returns:
         """
-        # 模型推理
-        try:
-            input_dict = {}
-            for _input_tensor,_input_name in zip(input_tensor,self.input_name):
-                input_dict[_input_name] = _input_tensor
-            outputs = self.session.run(self.output_name, input_dict)
-            for i in np.arange(len(outputs)):
-                outputs[i] = np.reshape(outputs[i],self.output_shape[i])
-            # outputs = self.session.run([self.output_name], {self.input_name: input_tensor})[0]
-            # outputs = np.reshape(outputs,self.output_shape)
-            return outputs
-        except AttributeError as e:
-            self.logger.debug(e)
-            return None
+        # 初始化模型输入字典
+        input_dict = {}
+        for _input_tensor, _input_name, _input_type in zip(input_tensor, self.input_name, self.input_type):
+            # input_dict[_input_name] = _input_tensor
+            if _input_type == 'tensor(float)':
+                input_dict[_input_name] = np.array(_input_tensor, dtype=np.float32)
+            else:
+                input_dict[_input_name] = np.array(_input_tensor, dtype=np.float16)
+        # 模型推理获取输出结果
+        outputs = self.session.run(self.output_name, input_dict)
+        outputs = [np.reshape(_output, _output_shape) for _output, _output_shape in zip(outputs, self.output_shape)]
+        # for i in np.arange(len(outputs)):
+        #     outputs[i] = np.reshape(outputs[i],self.output_shape[i])
+        outputs = np.array(outputs, dtype=np.float32)
+        return outputs

@@ -12,10 +12,9 @@
 import os
 import sys
 import numpy as np
-#import pycuda.autoinit
+import pycuda.autoinit
 import pycuda.driver as cuda
 import tensorrt as trt
-import pycuda.autoinit
 
 class HostDeviceMem(object):
     """ Host and Device Memory Package """
@@ -32,32 +31,19 @@ class HostDeviceMem(object):
 
 class TensorRT_Engine(object):
 
-    def __init__(self, logger, onnx_model_path, tensorrt_model_path,gpu_idx=0, mode="fp32", trt_int8_calibrator=None):
+    def __init__(self, logger, tensorrt_model_path,gpu_idx=0):
         """
         这是TensorRT模型推理引擎的初始化函数
         Args:
-            onnx_model_path: ONNX模型文件路径
             tensorrt_model_path: TensorRT模型文件路径
-            input_name: 输入节点名称
-            output_name: 输出节点名称
-            input_shape: 输入节点shape
-            output_shape: 输出节点shape
             gpu_idx: gpu序号,默认为0
-            mode: TensorRT模型精度,默认为'fp32'
-            trt_int8_calibrator: TensorRT校准类实例,默认为None
         """
+        assert os.path.exists(tensorrt_model_path), "TensorRT模型不存在：{0}".format(tensorrt_model_path)
         # 初始化模型参数
         self.logger = logger
-        self.onnx_model_path = onnx_model_path
         self.tensorrt_model_path = tensorrt_model_path
+        self.input_shape = []
         self.output_shape = []
-        self.mode = mode.lower()
-        self.trt_int8_calibrator = trt_int8_calibrator
-        self.trt_version = int(trt.__version__.split(".")[0])
-
-        # 生成TensorRT模型文件
-        if not os.path.exists(self.tensorrt_model_path):
-            self.onnx2tensorrt()
 
         # 初始化TensorRT推理引擎相关变量
         self.device_ctx = cuda.Device(gpu_idx).make_context()
@@ -65,136 +51,23 @@ class TensorRT_Engine(object):
         self.context = self.engine.create_execution_context()
         self.input, self.output, self.bindings, self.stream = self.allocate_buffers(self.context)
 
-    def __del__(self):
-        del self.bindings
-        del self.stream
-        self.device_ctx.detach() # 2. 实例释放时需要detech cuda上下文
-        del self.engine
-        del self.context
-        del self.input
-        del self.output
+    def get_input_shape(self):
+        return self.input_shape
 
-    def onnx2tensorrt(self):
-        """
-        这是ONNX转TensorRT模型的函数
-        Returns:
-        """
-        if self.trt_version >= 8:
-            self.onnx2tensorrt8()
-        else:
-            self.onnx2tensorrt7()
+    # def __del__(self):
+    #     #self.device_ctx.detach()  # 2. 实例释放时需要detech cuda上下文
+    #     del self.engine
+    #     del self.context
+    #     del self.bindings
+    #     del self.stream
+    #     del self.input
+    #     del self.output
 
-    def onnx2tensorrt7(self):
-        """
-        这是利用ONNX模型生成TensorRT模型的函数,TensorRT7及以下版本接口
-        Returns:
-        """
-        assert self.mode in ['fp32', 'fp16', 'int8'], "mode should be in ['fp32', 'fp16', 'int8'], " \
-                                                 "but got {}".format(self.mode)
-
-        trt_logger = trt.Logger(getattr(trt.Logger, 'ERROR'))
-        builder = trt.Builder(trt_logger)
-
-        self.logger.info("Loading ONNX file from path {}...".format(self.onnx_model_path))
-        EXPLICIT_BATCH = 1 << (int)(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
-        network = builder.create_network(EXPLICIT_BATCH)
-        parser = trt.OnnxParser(network, trt_logger)
-        if isinstance(self.onnx_model_path, str):
-            with open(self.onnx_model_path, 'rb') as f:
-                self.logger.info("Beginning ONNX file parsing")
-                flag = parser.parse(f.read())
-        else:
-            flag = parser.parse(self.onnx_model_path.read())
-        if not flag:
-            for error in range(parser.num_errors):
-                self.logger.info(parser.get_error(error))
-
-        self.logger.info("Completed parsing of ONNX file.")
-        # re-order output tensor
-        output_tensors = [network.get_output(i) for i in range(network.num_outputs)]
-        [network.unmark_output(tensor) for tensor in output_tensors]
-        for tensor in output_tensors:
-            identity_out_tensor = network.add_identity(tensor).get_output(0)
-            identity_out_tensor.name = 'identity_{}'.format(tensor.name)
-            network.mark_output(tensor=identity_out_tensor)
-
-        config = builder.create_builder_config()
-        config.max_workspace_size = (1 << 25)
-        if self.mode == 'fp16':
-            assert builder.platform_has_fast_fp16, "not support fp16"
-            builder.fp16_mode = True
-        if self.mode == 'int8':
-            assert builder.platform_has_fast_int8, "not support int8"
-            builder.int8_mode = True
-            builder.int8_calibrator = self.trt_int8_calibrator
-
-        # if strict_type_constraints:
-        #     config.set_flag(trt.BuilderFlag.STRICT_TYPES)
-
-        self.logger.info("Building an engine from file {}; this may take a while...".format(self.onnx_model_path))
-        engine = builder.build_cuda_engine(network)
-        self.logger.info("Create engine successfully!")
-
-        self.logger.info("Saving TRT engine file to path {}".format(self.tensorrt_model_path))
-        with open(self.tensorrt_model_path, 'wb') as f:
-            f.write(engine.serialize())
-        self.logger.info("Engine file has already saved to {}!".format(self.tensorrt_model_path))
-
-    def onnx2tensorrt8(self):
-        """
-        这是利用ONNX模型生成TensorRT模型的函数,TensorRT8及以上版本接口
-        Returns:
-        """
-        assert self.mode in ['fp32', 'fp16', 'int8'], "mode should be in ['fp32', 'fp16', 'int8'], " \
-                                                 "but got {}".format(self.mode)
-
-        trt_logger = trt.Logger(getattr(trt.Logger, 'ERROR'))
-        builder = trt.Builder(trt_logger)
-
-        self.logger.info("Loading ONNX file from path {}...".format(self.onnx_model_path))
-        EXPLICIT_BATCH = 1 << (int)(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
-        network = builder.create_network(EXPLICIT_BATCH)
-        parser = trt.OnnxParser(network, trt_logger)
-        if isinstance(self.onnx_model_path, str):
-            with open(self.onnx_model_path, 'rb') as f:
-                self.logger.info("Beginning ONNX file parsing")
-                flag = parser.parse(f.read())
-        else:
-            flag = parser.parse(self.onnx_model_path.read())
-        if not flag:
-            for error in range(parser.num_errors):
-                self.logger.info(parser.get_error(error))
-
-        self.logger.info("Completed parsing of ONNX file.")
-        # re-order output tensor
-        output_tensors = [network.get_output(i) for i in range(network.num_outputs)]
-        [network.unmark_output(tensor) for tensor in output_tensors]
-        for tensor in output_tensors:
-            identity_out_tensor = network.add_identity(tensor).get_output(0)
-            identity_out_tensor.name = 'identity_{}'.format(tensor.name)
-            network.mark_output(tensor=identity_out_tensor)
-
-        config = builder.create_builder_config()
-        config.max_workspace_size = (1 << 25)
-        if self.mode == 'fp16':
-            assert builder.platform_has_fast_fp16, "not support fp16"
-            config.set_flag(trt.BuilderFlag.FP16)
-        if self.mode == 'int8':
-            assert builder.platform_has_fast_int8, "not support int8"
-            config.set_flag(trt.BuilderFlag.INT8)
-            config.int8_calibrator =self.trt_int8_calibrator
-
-        # if strict_type_constraints:
-        #     config.set_flag(trt.BuilderFlag.STRICT_TYPES)
-
-        self.logger.info("Building an engine from file {}; this may take a while...".format(self.onnx_model_path))
-        engine = builder.build_engine(network,config)
-        self.logger.info("Create engine successfully!")
-
-        self.logger.info("Saving TRT engine file to path {}".format(self.tensorrt_model_path))
-        with open(self.tensorrt_model_path, 'wb') as f:
-            f.write(engine.serialize())
-        self.logger.info("Engine file has already saved to {}!".format(self.tensorrt_model_path))
+    # def __del__(self):
+    #     del self.input
+    #     del self.output
+    #     del self.stream
+    #     self.device_ctx.detach()  # release device context
 
     def load_tensorrt_engine(self):
         """
@@ -203,16 +76,22 @@ class TensorRT_Engine(object):
             self:
         Returns:
         """
-        if os.path.exists(self.tensorrt_model_path):
-            TRT_LOGGER = trt.Logger()
-            with open(self.tensorrt_model_path, "rb") as f, \
-                    trt.Runtime(TRT_LOGGER) as runtime:
-                engine = runtime.deserialize_cuda_engine(f.read())
-            self.logger.info("Loaded TensorRT engine from file {}".format(self.tensorrt_model_path))
-            return engine
-        else:
-            self.logger.error("TensorRT engine file {} does not exist!".format(self.tensorrt_model_path))
-            sys.exit(1)
+        TRT_LOGGER = trt.Logger()
+        with open(self.tensorrt_model_path, "rb") as f, \
+                trt.Runtime(TRT_LOGGER) as runtime:
+            engine = runtime.deserialize_cuda_engine(f.read())
+        self.logger.info("Loaded TensorRT engine from file {}".format(self.tensorrt_model_path))
+        return engine
+        # if os.path.exists(self.tensorrt_model_path):
+        #     TRT_LOGGER = trt.Logger()
+        #     with open(self.tensorrt_model_path, "rb") as f, \
+        #             trt.Runtime(TRT_LOGGER) as runtime:
+        #         engine = runtime.deserialize_cuda_engine(f.read())
+        #     self.logger.info("Loaded TensorRT engine from file {}".format(self.tensorrt_model_path))
+        #     return engine
+        # else:
+        #     self.logger.error("TensorRT engine file {} does not exist!".format(self.tensorrt_model_path))
+        #     sys.exit(1)
 
     def allocate_buffers(self, context):
         """
@@ -238,6 +117,8 @@ class TensorRT_Engine(object):
             # Append to the appropriate list.
             if self.engine.binding_is_input(binding):
                 inputs.append(HostDeviceMem(host_mem, device_mem))
+                binding_idx = self.engine.get_binding_index(binding)
+                self.input_shape.append(self.engine.get_binding_shape(binding_idx))
             else:
                 outputs.append(HostDeviceMem(host_mem, device_mem))
                 binding_idx = self.engine.get_binding_index(binding)
@@ -251,10 +132,10 @@ class TensorRT_Engine(object):
             input_tensor: 输入张量
         Returns:
         """
-        # Copy data to input memory buffer
-        [np.copyto(_inp.host, _input_tensor.ravel()) for _inp,_input_tensor in zip(self.input,input_tensor)]
         # Push to device
         self.device_ctx.push()
+        # Copy data to input memory buffer
+        [np.copyto(_inp.host, _input_tensor.ravel()) for _inp,_input_tensor in zip(self.input,input_tensor)]
         # Transfer input data to the GPU.
         # cuda.memcpy_htod_async(self._input.device, self._input.host, self._stream)
         [cuda.memcpy_htod_async(inp.device, inp.host, self.stream) for inp in self.input]
@@ -265,8 +146,7 @@ class TensorRT_Engine(object):
         [cuda.memcpy_dtoh_async(out.host, out.device, self.stream) for out in self.output]
         # Synchronize the stream
         self.stream.synchronize()
+        host_outputs = [out.host.reshape(output_shape) for out,output_shape in zip(self.output,self.output_shape)]
         # Pop the device
         self.device_ctx.pop()
-        host_outputs = [out.host.reshape(output_shape) for out,output_shape in zip(self.output[::-1],self.output_shape)]
         return host_outputs
-
