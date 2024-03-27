@@ -1,5 +1,6 @@
 # YOLO_Deploy
 这是YOLO系列算法在不同部署框架下的Python部署项目。目前模型支持YOLOv5、YOLOv8和YOLOS，部署框架支持`ONNXRuntime`、`TensorRT`。
+---
 
 # 版本更新日志
 - [2024-03-27]新增yolov8和yolos模型实现，并对相关代码结构和bug进行进一步优化，版本为`v1.0`；
