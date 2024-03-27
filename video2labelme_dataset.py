@@ -10,11 +10,12 @@
 """
 
 import os
+import sys
 import cv2
 import json
-import shutil
 import labelme
 import numpy as np
+
 from tqdm import tqdm
 from threading import Thread
 from datetime import datetime
@@ -32,30 +33,25 @@ VID_FORMATS = ['.asf', '.avi', '.gif', '.m4v', '.mkv', '.mov', '.mp4', '.mpeg', 
 parser = ArgsParser()
 parser.add_argument('--cfg', type=str, default='./config/detection.yaml', help='config yaml file path')
 parser.add_argument('--video', type=str, default='./video', help='video path or video directory')
-parser.add_argument('--result_dir', type=str, default="./result", help='voc dataset save directory')
+parser.add_argument('--result_dir', type=str, default="./result/labelme_dataset", help='voc dataset save directory')
 parser.add_argument('--interval', type=int, default=1, help='video interval')
 parser.add_argument('--num_threads', type=int, default=1, help='number of detection threads')
 parser.add_argument('--print_detection_result', action='store_true', help='export time')
 opt = parser.parse_args()
 
-def video2labelme_dataset(logger,detection_model,video,result_dir,interval=1,num_threads=1,print_detection_result=False):
+def video2labelme_dataset(logger,detection_models,video,result_dir,interval=-1,print_detection_result=False):
     """
     这是利用检测模型对视频(集)进行预标注并生成Labelme数据集的函数
     Args:
         logger: 日志类实例
-        detection_model: 检测模型实例
+        detection_models: 检测模型实例数组
         video: 视频文件路径或者视频文件夹
         result_dir: 结果保存路径
-        interval: 视频抽帧间隔，默认为1s
-        num_threads: 检测线程数,默认为1
+        interval: 视频抽帧间隔，默认为-1
         print_detection_result: 是否打印检测结果，默认为False
     Returns:
     """
-    # 初始化视频路径
-    # time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    # result_dir = os.path.join(result_dir,time)
-    # if not os.path.exists(result_dir):
-    #     os.makedirs(result_dir)
+    # 初始化相关变量
     result_dir = os.path.abspath(result_dir)
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
@@ -106,7 +102,8 @@ def video2labelme_dataset(logger,detection_model,video,result_dir,interval=1,num
 
     # 检测图像并生成VOC数据集标签
     logger.info("图像检测与预标注开始")
-    prelabe_imageset_save_labelme_dataset(detection_model,labelme_image_paths,labelme_json_paths,num_threads,print_detection_result)
+    prelabe_imageset_save_labelme_dataset(detection_models,labelme_image_paths,
+                                          labelme_json_paths,print_detection_result)
     logger.info("图像检测与预标注结束")
 
 def video_decode(video_paths, labelme_dataset_dirs,interval=1):
@@ -118,9 +115,7 @@ def video_decode(video_paths, labelme_dataset_dirs,interval=1):
         interval: 视频抽帧频率,默认为1
     Returns:
     """
-    # 多线切割视频并生成图像集
-    #print(video_paths)
-    #print(voc_dataset_dirs)
+    # 多线程切割视频并生成图像集
     size = len(video_paths)
     if size // cpu_count() != 0:
         num_pools = cpu_count()
@@ -166,7 +161,7 @@ def single_video2labelme_dataset(video_path,labelme_dataset_dir,interval=-1):
     """
     # 初始化视频名称
     _, video_name = os.path.split(video_path)
-    fname, ext = os.path.splitext(video_name)
+    fname, _ = os.path.splitext(video_name)
 
     # 读取视频fps
     vid_cap = cv2.VideoCapture(video_path)
@@ -179,25 +174,32 @@ def single_video2labelme_dataset(video_path,labelme_dataset_dir,interval=-1):
     # 利用FFmpeg进行视频抽帧
     image_format = os.path.join(labelme_dataset_dir,"images","{0}_frame%08d.jpg".format(fname))
     os.system("ffmpeg -i {0} -qscale:v 1 -r {1} {2}".format(video_path, bin, image_format))
-    #os.system("ffmpeg -i {0} -f image2 -vf fps={1} -qscale:v 2 {2}".format(video_path, bin, image_format))
-    # command_extract = "select=(gte(n\,%d))*not(mod(n\,%d))" % (60,bin)
-    # com_str = 'ffmpeg -i {0}  -vf "{1}" -vsync 0 {2}'.format(video_path,command_extract,image_format)
-    # os.system(com_str)
 
-def prelabe_imageset_save_labelme_dataset(detection_model,labelme_image_paths,labelme_json_paths,num_threads=1,print_detection_result=False):
+def prelabe_imageset_save_labelme_dataset(detection_models,labelme_image_paths,
+                                          labelme_json_paths,print_detection_result=False):
     """
     这是检测图像集进行预标注并保存为labelme数据集的函数
     Args:
-        detection_model: 检测模型实例
+        detection_model: 检测模型实例猎豹
         labelme_image_paths: labelme数据集图像文件路径数组
         labelme_json_paths: labelme数据集标签文件路径数组
-        num_threads: 检测线程数,默认为1
         print_detection_result: 是否打印检测结果，默认为False
     Returns:
     """
     # 多线程检测图像并生成VOC标签
     size = len(labelme_image_paths)
+    num_models = len(detection_models)
+    if size // num_models != 0:
+        num_threads = num_models
+    elif size // (num_models // 2) != 0:
+        num_threads = num_models // 2
+    elif size // (num_models // 4) != 0:
+        num_threads = num_models // 4
+    else:
+        num_threads = 1
     batch_size = size // num_threads
+    for i in np.arange(num_models - num_threads):
+        del detection_models[0]
     start = 0
     threads = []
     for i in np.arange(num_threads):
@@ -207,17 +209,18 @@ def prelabe_imageset_save_labelme_dataset(detection_model,labelme_image_paths,la
             end = size
         batch_labelme_image_paths = labelme_image_paths[start:end]
         batch_labelme_json_paths = labelme_json_paths[start:end]
-        _detection_model = detection_model[i]
+        detection_model = detection_models[i]
         start = end
         t = Thread(target=detect_batch_images,
-                   args=(_detection_model,batch_labelme_image_paths,
+                   args=(detection_model,batch_labelme_image_paths,
                          batch_labelme_json_paths,print_detection_result))
         t.start()
         threads.append(t)
     for t in threads:
         t.join()
 
-def detect_batch_images(detection_model,batch_labelme_image_paths,batch_labelme_json_paths,print_detection_result=False):
+def detect_batch_images(detection_model,batch_labelme_image_paths,
+                        batch_labelme_json_paths,print_detection_result=False):
     """
     这是利用检测模型检测批量图像并生成labelme标签的函数
     Args:
@@ -244,7 +247,7 @@ def detect_single_image(detection_model,labelme_image_path,labelme_json_path,pri
     # 检测图像并将检测结果
     _,image_name = os.path.split(labelme_image_path)
     image = cv2.imread(labelme_image_path)
-    h, w, c = np.shape(image)
+    h, w, _ = np.shape(image)
     outputs = detection_model.detect(image,export_time=False,print_detection_result=print_detection_result)
 
     # 将检测结果
@@ -280,25 +283,31 @@ def run_main():
     cfg = init_config(opt)
     # 初始化检测模型
     model_type = cfg["DetectionModel"]["model_type"].lower()
+    model_path = cfg["DetectionModel"]["engine_model_path"]
+    _,model_name = os.path.split(model_path)
     logger = logger_config(cfg['log_path'], model_type)
     detection_models = []
-    for i in np.arange(opt.num_threads):
+    for _ in np.arange(opt.num_threads):
         if model_type == 'yolov5':
             from model import YOLOv5
             detection_model = YOLOv5(logger=logger, cfg=cfg["DetectionModel"])
+        elif model_type == 'yolov8':
+            from model import YOLOv8
+            detection_model = YOLOv8(logger=logger, cfg=cfg["DetectionModel"])
+        elif model_type == 'yolos':
+            from model import YOLOS
+            detection_model = YOLOS(logger=logger, cfg=cfg["DetectionModel"])
         else:
-            from model import YOLOv5
-            detection_model = YOLOv5(logger=logger, cfg=cfg["DetectionModel"])
+            sys.exit(0)
         detection_models.append(detection_model)
 
     # 初始化图像及其结果保存文件夹路径
-    # time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    # result_dir = os.path.join(opt.result_dir, time)
-    result_dir = os.path.abspath(opt.result_dir)
+    time = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
+    result_dir = os.path.join(opt.result_dir,model_name,time)
     video = os.path.abspath(opt.video)
 
     # 检测图像
-    video2labelme_dataset(logger, detection_models, video,result_dir,opt.interval,opt.num_threads,opt.print_detection_result)
+    video2labelme_dataset(logger, detection_models, video,result_dir,opt.interval,opt.print_detection_result)
 
 if __name__ == '__main__':
     run_main()

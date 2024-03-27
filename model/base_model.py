@@ -11,8 +11,8 @@
 
 import os
 
-from engine.onnx import ONNX_Engine
-from engine.tensorrt import TensorRT_Engine
+from engine.onnx import ONNXEngine
+from engine.tensorrt import TensorRTEngine
 from utils.detection_utils import random_generate_colors
 
 class DetectionModel(object):
@@ -47,24 +47,24 @@ class DetectionModel(object):
 
         # 初始化推理引擎
         if self.engine_type == 'onnx':
-            self.engine = ONNX_Engine(logger=logger,
-                                      onnx_model_pat=self.engine_model_path)
+            self.engine = ONNXEngine(logger=logger,
+                                     onnx_model_path=self.engine_model_path)
         elif self.engine_type == 'tensorrt':
-            self.engine = TensorRT_Engine(logger=self.logger,
-                                          tensorrt_model_path=self.engine_model_path,
-                                          gpu_idx=self.gpu_id)
+            self.engine = TensorRTEngine(logger=self.logger,
+                                         tensorrt_model_path=self.engine_model_path,
+                                         gpu_idx=self.gpu_id)
         else:
-            self.engine = ONNX_Engine(logger=self.logger,
-                                      onnx_model_path=self.engine_model_path)
+            self.engine = ONNXEngine(logger=self.logger,
+                                     onnx_model_path=self.engine_model_path)
 
         # 初始化模型输入shape
-        input_shape = self.engine.get_input_shape()[0]
-        if input_shape[1] <= 3:
+        self.input_shape = self.engine.get_input_shape()[0]
+        if self.input_shape[1] <= 3:
             self.is_nchw = True
-            self.batch_size, self.c, self.h, self.w = input_shape
+            self.batch_size, self.c, self.h, self.w = self.input_shape
         else:
             self.is_nchw = False
-            self.batch_size, self.h, self.w, self.c = input_shape
+            self.batch_size, self.h, self.w, self.c = self.input_shape
 
     def get_batch_size(self):
         return self.batch_size
@@ -96,23 +96,25 @@ class DetectionModel(object):
         """
         pass
 
-    def detect(self,image,export_time=False):
+    def detect(self,image,export_time=False,print_detection_result=False):
         """
         这是检测的图像函数
         Args:
             image: 输入图像，可以为单张图像也可以为图像数组
             export_time: 是否输出时间标志位,默认为False
+            print_detection_result：是否打印检测结果，默认为False
         Returns:
         """
         pass
 
-    def detect_video(self,video_path,result_dir,interval=-1):
+    def detect_video(self,video_path,video_result_path,interval=-1,print_detection_result=False):
         """
         这是检测视频的函数
         Args:
             video_path: 视频路径
-            result_dir: 结果保存文件夹路径
+            video_result_path: 检测结果视频路径
             interval: 视频抽帧频率,默认为-1,逐帧检测
+            print_detection_result：是否打印检测结果，默认为False
         Returns:
         """
         pass

@@ -15,6 +15,7 @@ import numpy as np
 import pycuda.autoinit
 import pycuda.driver as cuda
 import tensorrt as trt
+from ..base_engine import BaseEngine
 
 class HostDeviceMem(object):
     """ Host and Device Memory Package """
@@ -29,19 +30,20 @@ class HostDeviceMem(object):
     def __repr__(self):
         return self.__str__()
 
-class TensorRT_Engine(object):
+class TensorRTEngine(BaseEngine):
 
-    def __init__(self, logger, tensorrt_model_path,gpu_idx=0):
+    def __init__(self, logger, tensorrt_model_path,gpu_idx=0,**kwargs):
         """
         这是TensorRT模型推理引擎的初始化函数
         Args:
+            logger: 日志类实例
             tensorrt_model_path: TensorRT模型文件路径
             gpu_idx: gpu序号,默认为0
         """
         assert os.path.exists(tensorrt_model_path), "TensorRT模型不存在：{0}".format(tensorrt_model_path)
+        super(TensorRTEngine,self).__init__(logger,tensorrt_model_path)
+        self.__dict__.update(kwargs)
         # 初始化模型参数
-        self.logger = logger
-        self.tensorrt_model_path = tensorrt_model_path
         self.input_shape = []
         self.output_shape = []
 
@@ -52,7 +54,24 @@ class TensorRT_Engine(object):
         self.input, self.output, self.bindings, self.stream = self.allocate_buffers(self.context)
 
     def get_input_shape(self):
+        """
+        这是TensorRT推理引擎获取模型输入形状的函数
+        Returns:
+        """
         return self.input_shape
+
+    def get_is_nchw(self):
+        """
+        这是TensorRT推理引擎获取模型输入形状是否为nchw格式的函数
+        Returns:
+        """
+        flag = True
+        for input_shape in self.input_shapes:
+            if len(input_shape) == 4:
+                if input_shape[1] > 3:
+                    flag = False
+                break
+        return flag
 
     # def __del__(self):
     #     #self.device_ctx.detach()  # 2. 实例释放时需要detech cuda上下文
@@ -72,30 +91,18 @@ class TensorRT_Engine(object):
     def load_tensorrt_engine(self):
         """
         这是加载TensorRT模型的函数
-        Args:
-            self:
         Returns:
         """
         TRT_LOGGER = trt.Logger()
-        with open(self.tensorrt_model_path, "rb") as f, \
+        with open(self.engine_model_path, "rb") as f, \
                 trt.Runtime(TRT_LOGGER) as runtime:
             engine = runtime.deserialize_cuda_engine(f.read())
-        self.logger.info("Loaded TensorRT engine from file {}".format(self.tensorrt_model_path))
+        self.logger.info("Loaded TensorRT engine from file {}".format(self.engine_model_path))
         return engine
-        # if os.path.exists(self.tensorrt_model_path):
-        #     TRT_LOGGER = trt.Logger()
-        #     with open(self.tensorrt_model_path, "rb") as f, \
-        #             trt.Runtime(TRT_LOGGER) as runtime:
-        #         engine = runtime.deserialize_cuda_engine(f.read())
-        #     self.logger.info("Loaded TensorRT engine from file {}".format(self.tensorrt_model_path))
-        #     return engine
-        # else:
-        #     self.logger.error("TensorRT engine file {} does not exist!".format(self.tensorrt_model_path))
-        #     sys.exit(1)
 
     def allocate_buffers(self, context):
         """
-        这是为TensorRT推理引擎分配缓存的函数
+        这是为TensorRT推理引擎分配模型输入输出缓存的函数
         Args:
             context: 上下文信息
         Returns:
@@ -105,8 +112,6 @@ class TensorRT_Engine(object):
         bindings = []
         stream = cuda.Stream()
         for binding in self.engine:
-            #print(self.engine.get_binding_shape(binding))
-            #size = trt.volume(self.engine.get_binding_shape(binding)) * self.engine.max_batch_size
             size = trt.volume(self.engine.get_binding_shape(binding))
             dtype = trt.nptype(self.engine.get_binding_dtype(binding))
             # Allocate host and device buffers
@@ -127,9 +132,9 @@ class TensorRT_Engine(object):
 
     def inference(self,input_tensor):
         """
-        这是TensorRT推理引擎的前向推理的函数
+        这是TensorRT推理引擎的前向推理函数
         Args:
-            input_tensor: 输入张量
+            input_tensor: 输入张量列表
         Returns:
         """
         # Push to device

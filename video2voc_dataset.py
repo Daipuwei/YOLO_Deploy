@@ -10,16 +10,17 @@
 """
 
 import os
+import sys
 import cv2
 import numpy as np
+
 from tqdm import tqdm
 from threading import Thread
 from datetime import datetime
-from pascal_voc_writer import Writer
 from multiprocessing import Pool
 from multiprocessing import cpu_count
+from pascal_voc_writer import Writer
 
-from utils import NpEncoder
 from utils import ArgsParser
 from utils import init_config
 from utils import print_error
@@ -30,8 +31,8 @@ VID_FORMATS = ['.asf', '.avi', '.gif', '.m4v', '.mkv', '.mov', '.mp4', '.mpeg', 
 parser = ArgsParser()
 parser.add_argument('--cfg', type=str, default='./config/detection.yaml', help='config yaml file path')
 parser.add_argument('--video', type=str, default='./video', help='video path or video directory')
-parser.add_argument('--result_dir', type=str, default="./result", help='voc dataset save directory')
-parser.add_argument('--interval', type=int, default=1, help='video interval')
+parser.add_argument('--result_dir', type=str, default="./result/voc_dataset", help='voc dataset save directory')
+parser.add_argument('--interval', type=float, default=-1, help='video interval')
 parser.add_argument('--num_threads', type=int, default=1, help='number of detection threads')
 parser.add_argument('--print_detection_result', action='store_true', help='export time')
 opt = parser.parse_args()
@@ -50,10 +51,6 @@ def video2voc_dataset(logger,detection_model,video,result_dir,interval=1,num_thr
     Returns:
     """
     # 初始化视频路径
-    # time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    # result_dir = os.path.join(result_dir,time)
-    # if not os.path.exists(result_dir):
-    #     os.makedirs(result_dir)
     result_dir = os.path.abspath(result_dir)
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
@@ -123,8 +120,6 @@ def video_decode(video_paths, voc_dataset_dirs,interval=-1):
     Returns:
     """
     # 多线切割视频并生成图像集
-    #print(video_paths)
-    #print(voc_dataset_dirs)
     size = len(video_paths)
     if size // cpu_count() != 0:
         num_pools = cpu_count()
@@ -168,7 +163,7 @@ def single_video2voc_dataset(video_path,voc_dataset_path,interval=-1):
     """
     # 初始化视频名称
     _, video_name = os.path.split(video_path)
-    fname, ext = os.path.splitext(video_name)
+    fname, _ = os.path.splitext(video_name)
 
     # 读取视频fps
     vid_cap = cv2.VideoCapture(video_path)
@@ -181,10 +176,6 @@ def single_video2voc_dataset(video_path,voc_dataset_path,interval=-1):
     # 利用FFmpeg进行视频抽帧
     image_format = os.path.join(voc_dataset_path,"JPEGImages","{0}_frame%08d.jpg".format(fname))
     os.system("ffmpeg -i {0} -qscale:v 1 -r {1} {2}".format(video_path, bin, image_format))
-    #os.system("ffmpeg -i {0} -f image2 -vf fps={1} -qscale:v 2 {2}".format(video_path, bin, image_format))
-    # command_extract = "select=(gte(n\,%d))*not(mod(n\,%d))" % (60,bin)
-    # com_str = 'ffmpeg -i {0}  -vf "{1}" -vsync 0 {2}'.format(video_path,command_extract,image_format)
-    # os.system(com_str)
 
 def prelabel_imageset_save_voc_dataset(detection_model,voc_image_paths,voc_xml_paths,num_threads=1,print_detection_result=False):
     """
@@ -243,16 +234,14 @@ def detect_single_image(detection_model,voc_image_path,voc_xml_path,print_detect
     """
     # 初始化VOC标签写入类
     image = cv2.imread(voc_image_path)
-    h, w, c = np.shape(image)
+    h, w, _ = np.shape(image)
     writer = Writer(voc_image_path,w,h)
 
     # 检测图像并将检测结果写入XML
-    class_names = detection_model.get_class_names()
     preds = detection_model.detect(image,export_time=False,print_detection_result=print_detection_result)
     if len(preds) > 0:
         for pred in preds:
             x1, y1, x2, y2 = pred['bbox']
-            score = pred['score']
             cls_name = pred['cls_name']
             x1 = int(round(x1))
             y1 = int(round(y1))
@@ -269,21 +258,27 @@ def run_main():
     cfg = init_config(opt)
     # 初始化检测模型
     model_type = cfg["DetectionModel"]["model_type"].lower()
+    model_path = cfg["DetectionModel"]["engine_model_path"]
+    _,model_name = os.path.split(model_path)
     logger = logger_config(cfg['log_path'], model_type)
     detection_models = []
-    for i in np.arange(opt.num_threads):
+    for _ in np.arange(opt.num_threads):
         if model_type == 'yolov5':
             from model import YOLOv5
             detection_model = YOLOv5(logger=logger, cfg=cfg["DetectionModel"])
+        elif model_type == 'yolov8':
+            from model import YOLOv8
+            detection_model = YOLOv8(logger=logger, cfg=cfg["DetectionModel"])
+        elif model_type == 'yolos':
+            from model import YOLOS
+            detection_model = YOLOS(logger=logger, cfg=cfg["DetectionModel"])
         else:
-            from model import YOLOv5
-            detection_model = YOLOv5(logger=logger, cfg=cfg["DetectionModel"])
+            sys.exit(0)
         detection_models.append(detection_model)
 
     # 初始化图像及其结果保存文件夹路径
-    # time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    # result_dir = os.path.join(opt.result_dir, time)
-    result_dir = os.path.abspath(opt.result_dir)
+    time = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
+    result_dir = os.path.join(opt.result_dir,model_name,time)
     video = os.path.abspath(opt.video)
 
     # 检测图像

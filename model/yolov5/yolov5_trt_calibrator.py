@@ -5,7 +5,6 @@
 # @File    : yolov5_trt_calibrator.py
 # @Software: PyCharm
 
-
 """
     这是定义YOLOv5校准集数据加载器的脚本
 """
@@ -15,9 +14,9 @@ import numpy as np
 import pycuda.driver as cuda
 
 from utils import letterbox
-from engine.tensorrt import Calibration_Dataloader
+from engine.tensorrt import CalibrationDataloader
 
-class YOLOv5_Calibration_Dataloader(Calibration_Dataloader):
+class YOLOv5CalibrationDataloader(CalibrationDataloader):
 
     def __init__(self,logger,input_shape,calibrator_image_dir,data_type='float32'):
         """
@@ -29,9 +28,9 @@ class YOLOv5_Calibration_Dataloader(Calibration_Dataloader):
             data_type: 数据类型,默认为'float32'
         """
         self.logger = logger
-        super(YOLOv5_Calibration_Dataloader,self).__init__(input_shape=input_shape,
-                                                           calibrator_image_dir=calibrator_image_dir,
-                                                           data_type=data_type)
+        super(YOLOv5CalibrationDataloader,self).__init__(input_shape=input_shape,
+                                                         calibrator_image_dir=calibrator_image_dir,
+                                                         data_type=data_type)
     def preprocess_image(self, image):
         """
         这是YOLOv5对单张图像进行预处理的函数
@@ -41,12 +40,14 @@ class YOLOv5_Calibration_Dataloader(Calibration_Dataloader):
         """
         # 等比例缩放图像
         image_tensor = letterbox(image,(self.height,self.width))
+        image_tensor = image_tensor.astype(np.float32)
         # BGR转RGB
         image_tensor = cv2.cvtColor(image_tensor, cv2.COLOR_BGR2RGB)
         # 归一化
         image_tensor = image_tensor / 255.0
         # hwc->chw
-        image_tensor = np.transpose(image_tensor,(2, 0, 1))
+        if self.is_nchw:
+            image_tensor = np.transpose(image_tensor,(2, 0, 1))
         image_tensor = np.ascontiguousarray(image_tensor)
         return image_tensor
 

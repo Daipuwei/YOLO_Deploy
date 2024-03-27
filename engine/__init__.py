@@ -5,5 +5,6 @@
 # @File    : __init__.py.py
 # @Software: PyCharm
 
+from .base_engine import BaseEngine
 from .onnx import *
 from .tensorrt import *

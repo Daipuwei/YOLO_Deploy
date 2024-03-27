@@ -39,18 +39,33 @@ def random_generate_colors(color_num):
     return rgb_colors
 
 
+# def letterbox(image, resize_shape=(640, 640), color=(114, 114, 114)):
+#     h, w, c = image.shape
+#     input_h,input_w = resize_shape
+#     # Calculate widht and height and paddings
+#     r = min(input_w / w,input_h / h)
+#     new_unpad = int(round(w * r)), int(round(h * r))
+#     dw,dh = input_w-new_unpad[0],input_h-new_unpad[1]
+#     dw /= 2
+#     dh /= 2
+#     resize_image = cv2.resize(image, new_unpad, interpolation=cv2.INTER_LINEAR)
+#     top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
+#     left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
+#     resize_image = cv2.copyMakeBorder(resize_image, top, bottom, left, right,
+#                                       cv2.BORDER_CONSTANT, value=color)  # add border
+#     #cv2.imwrite('letterbox.jpg', resize_image)
+#     return resize_image
+
 def letterbox(image, resize_shape=(640, 640), color=(114, 114, 114)):
-    h, w, c = image.shape
+    h, w, _ = image.shape
     input_h,input_w = resize_shape
     # Calculate widht and height and paddings
     r = min(input_w / w,input_h / h)
     new_unpad = int(round(w * r)), int(round(h * r))
     dw,dh = input_w-new_unpad[0],input_h-new_unpad[1]
-    dw /= 2
-    dh /= 2
     resize_image = cv2.resize(image, new_unpad, interpolation=cv2.INTER_LINEAR)
-    top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
-    left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
+    top, bottom = 0, int(round(dh + 0.1))
+    left, right = 0, int(round(dw + 0.1))
     resize_image = cv2.copyMakeBorder(resize_image, top, bottom, left, right,
                                       cv2.BORDER_CONSTANT, value=color)  # add border
     #cv2.imwrite('letterbox.jpg', resize_image)
@@ -71,28 +86,43 @@ def xywh2xyxy(x):
     y[:, 3] = x[:, 1] + x[:, 3] / 2  # bottom right y
     return y
 
-def scale_coords(coords,img1_shape, img0_shape):
-    gain = min(img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1])  # gain  = old / new
-    i2d = np.array([[gain,0,(-gain*img0_shape[1]+img1_shape[1]+gain-1)*0.5],
-                    [0,gain,(-gain*img0_shape[0]+img1_shape[0]+gain-1)*0.5]])
-    d2i = cv2.invertAffineTransform(i2d)
-    d2i = np.reshape(d2i,(6,1))
-    #pad = (img1_shape[1] - img0_shape[1] * gain) / 2, (img1_shap,1e[0] - img0_shape[0] * gain) / 2  # wh padding
-    # gain = min(img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1])  # gain  = old / new
-    # pad = (img0_shape[1] - img1_shape[1] / gain) / 2, (img0_shape[0] - img1_shape[0] / gain) / 2  # wh padding
+# def scale_coords(coords,img1_shape, img0_shape):
+#     gain = min(img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1])  # gain  = old / new
+#     i2d = np.array([[gain,0,(-gain*img0_shape[1]+img1_shape[1]+gain-1)*0.5],
+#                     [0,gain,(-gain*img0_shape[0]+img1_shape[0]+gain-1)*0.5]])
+#     d2i = cv2.invertAffineTransform(i2d)
+#     d2i = np.reshape(d2i,(6,1))
+#     #pad = (img1_shape[1] - img0_shape[1] * gain) / 2, (img1_shap,1e[0] - img0_shape[0] * gain) / 2  # wh padding
+#     # gain = min(img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1])  # gain  = old / new
+#     # pad = (img0_shape[1] - img1_shape[1] / gain) / 2, (img0_shape[0] - img1_shape[0] / gain) / 2  # wh padding
+#
+#
+#     # coords[:, :4] /= gain
+#     # coords[:, [0, 2]] -= pad[0]  # x padding
+#     # coords[:, [1, 3]] -= pad[1]  # y padding
+#     coords[:, 0] = d2i[0]*coords[:,0] + d2i[2]
+#     coords[:, 1] = d2i[0]*coords[:, 1]+d2i[5]
+#     coords[:, 2] = d2i[0]*coords[:,2] + d2i[2]
+#     coords[:, 3] = d2i[0]*coords[:, 3]+d2i[5]
+#
+#     clip_coords(coords, img0_shape)
+#     return coords
 
-
-    # coords[:, :4] /= gain
-    # coords[:, [0, 2]] -= pad[0]  # x padding
-    # coords[:, [1, 3]] -= pad[1]  # y padding
-    coords[:, 0] = d2i[0]*coords[:,0] + d2i[2]
-    coords[:, 1] = d2i[0]*coords[:, 1]+d2i[5]
-    coords[:, 2] = d2i[0]*coords[:,2] + d2i[2]
-    coords[:, 3] = d2i[0]*coords[:, 3]+d2i[5]
-
-    clip_coords(coords, img0_shape)
+def scale_coords(coords,input_shape, image_shape):
+    """
+    这是将检测框坐标还原到原始图像尺度的函数
+    Args:
+        coords: 检测框数组，格式为(x1,y1,x2,y2)
+        input_shape: 模型输入尺度
+        image_shape: 原始图像尺度
+    Returns:
+    """
+    # 将检测框坐标还原到原始图像尺度
+    gain = min(input_shape[0] / image_shape[0], input_shape[1] / image_shape[1])
+    coords /= gain
+    # 避免坐标越界
+    clip_coords(coords, image_shape)
     return coords
-
 
 def clip_coords(bboxes, img_shape):
     """
@@ -118,9 +148,7 @@ def draw_detection_results(image,detecion_outputs,colors):
     Returns:
     """
     h,w,_= np.shape(image)
-    tl = min(round((image.shape[0] + image.shape[1]) // 300),1)  # line/font thickness
-    # print(np.shape(preds))
-    #print(preds)
+    tl = min(round((h + w) // 300),1)  # line/font thickness
     for output in detecion_outputs:
         x1,y1,x2,y2 = output['bbox']
         score = output['score']

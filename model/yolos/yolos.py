@@ -1,0 +1,310 @@
+# -*- coding: utf-8 -*-
+# @Time    : 2024/3/22 下午9:23
+# @Author  : DaiPuWei
+# @Email   : daipuwei@qq.com
+# @File    : yolos.py
+# @Software: PyCharm
+
+"""
+    这是定义YOLOS模型的脚本
+"""
+
+import os
+import cv2
+import time
+import numpy as np
+
+from model import DetectionModel
+
+from utils import get_classes
+from utils import draw_detection_results
+
+class YOLOS(DetectionModel):
+
+    def __init__(self,logger,cfg,gpu_id=0):
+        """
+        这是YOLOS的初始化函数
+        Args:
+            logger: 日志类实例
+            cfg: 配置参数文件或者配置参数字典
+            gpu_id: gpu设备号,默认为0
+        """
+        # 初始化YOLOS相关变量
+        class_names = get_classes(os.path.abspath(cfg['class_name_path']))
+        self.mean = np.array([0.485, 0.456, 0.406])
+        self.std = np.array([0.229, 0.224, 0.225])
+        # COCO数据集原始91类别映射关系
+        self.class_names_dict = {1: 'person', 2: 'bicycle', 3: 'car', 4: 'motorcycle', 5: 'airplane', 6: 'bus',
+                                 7: 'train',8: 'truck', 9: 'boat', 10: 'traffic light', 11: 'fire hydrant', 13: 'stop sign',
+                                 14: 'parking meter', 15: 'bench', 16: 'bird', 17: 'cat', 18: 'dog', 19: 'horse',
+                                 20: 'sheep',21: 'cow', 22: 'elephant', 23: 'bear', 24: 'zebra', 25: 'giraffe', 27: 'backpack',
+                                 28: 'umbrella',31: 'handbag', 32: 'tie', 33: 'suitcase', 34: 'frisbee', 35: 'skis', 36: 'snowboard',
+                                 37: 'sports ball',38: 'kite', 39: 'baseball bat', 40: 'baseball glove', 41: 'skateboard',
+                                 42: 'surfboard',43: 'tennis racket', 44: 'bottle', 46: 'wine glass', 47: 'cup', 48: 'fork',
+                                 49: 'knife',50: 'spoon', 51: 'bowl', 52: 'banana', 53: 'apple', 54: 'sandwich', 55: 'orange',
+                                 56: 'broccoli',57: 'carrot', 58: 'hot dog', 59: 'pizza', 60: 'donut', 61: 'cake', 62: 'chair',
+                                 63: 'couch',64: 'potted plant', 65: 'bed', 67: 'dining table', 70: 'toilet', 72: 'tv',
+                                 73: 'laptop',74: 'mouse', 75: 'remote', 76: 'keyboard', 77: 'cell phone', 78: 'microwave',
+                                 79: 'oven',80: 'toaster', 81: 'sink', 82: 'refrigerator', 84: 'book', 85: 'clock', 86: 'vase',
+                                 87: 'scissors', 88: 'teddy bear', 89: 'hair drier', 90: 'toothbrush'}
+        super(YOLOS,self).__init__(logger=logger,
+                                    class_names=class_names,
+                                    engine_model_path=cfg['engine_model_path'],
+                                    model_type=cfg['model_type'],
+                                    engine_type=cfg['engine_type'],
+                                    confidence_threshold=cfg['confidence_threshold'],
+                                    iou_threshold=cfg['iou_threshold'],
+                                    gpu_id=gpu_id)
+        self.logger.info("初始化YOLOS检测模型成功")
+
+    def preprocess_single_image(self,image):
+        """
+        这是YOLOS对单张图像进行预处理的函数
+        Args:
+            image: 图像，opencv格式
+        Returns:
+        """
+        # 填充像素并等比例缩放
+        h,w = np.shape(image)[0:2]
+        image_tensor = cv2.resize(image, (self.w,self.h), interpolation=cv2.INTER_LINEAR)
+        # image_tensor = image_tensor.astype(np.float32)
+        # # BGR转RGB
+        # image_tensor = cv2.cvtColor(image_tensor, cv2.COLOR_BGR2RGB)
+        # 归一化
+        image_tensor = image_tensor / 255.0
+        image_tensor -= self.mean
+        image_tensor /= self.std
+        # hwc->chw
+        if self.is_nchw:
+            image_tensor = np.transpose(image_tensor,(2, 0, 1))
+        image_tensor = np.ascontiguousarray(image_tensor)
+        return image_tensor,(h,w)
+
+    def preprocess_batch_images(self,batch_images):
+        """
+        这是YOLOS对批量图像进行处理的函数
+        Args:
+            batch_images: 批量图像数组，每张图像opencv读入
+        Returns:
+        """
+        image_tensor = []
+        image_shapes = []
+        for image in batch_images:
+            # 单独处理一张图像
+            _image_tensor,_image_shape = self.preprocess_single_image(image)
+            image_tensor.append(_image_tensor)
+            image_shapes.append(_image_shape)
+        image_tensor = np.ascontiguousarray(image_tensor)
+        image_shapes = np.array(image_shapes)
+        return image_tensor,image_shapes
+
+    def preprocess(self,image):
+        """
+        这是YOLOS的图像预处理函数
+        Args:
+            image: 输入图像，可以为单张图像也可以为图像数组
+        Returns:
+        """
+        assert self.image_num > 0, "input image(s) must be 1 at least"
+        assert self.image_num <= self.batch_size, "input image(s) size is {0} which is greater than model batch size:{1}".format(self.image_num,self.batch_size)
+        if self.is_nchw:
+            image_tensor = np.zeros((self.batch_size, self.c, self.h, self.w),dtype=np.float32)
+        else:
+            image_tensor = np.zeros((self.batch_size, self.h, self.w, self.c), dtype=np.float32)
+        image_shapes = np.zeros((self.batch_size,2))
+        _image_tensor,_image_shape = self.preprocess_batch_images(image)
+        image_tensor[0:self.image_num] = _image_tensor
+        image_shapes[0:self.image_num] = _image_shape
+        return image_tensor,image_shapes
+
+    def postprocess_single_image(self,dets,image_shape):
+        """
+        这是对一张图像的预测结果进行后处理的函数
+        Args:
+            dets: 预测结果，shape为(anchor_num,6)
+            scale: 放缩数组
+            image_shape: 图像尺度
+        Returns:
+        """
+        # 计算每个类别的后验概率
+        bboxes = dets[:,0:4]
+        scores = dets[:,4]
+        cls_ids = dets[:,5]
+
+        # 对预测框进行坐标格式进行转换，并还原到原始尺度
+        h,w = image_shape
+        bboxes *= np.array([w, h, w, h])
+        #bboxes *= np.array([w/self.w, h/self.h, w/self.w, h/self.h])
+        #bboxes *= np.array([h,w,h,w])
+
+        # 使用NMS算法过滤冗余框
+        indices = cv2.dnn.NMSBoxes(bboxes.tolist(), scores.tolist(),
+                                   self.confidence_threshold,self.iou_threshold)
+        indices = np.reshape(indices,(len(indices),))
+        if len(indices) == 0:
+            return []
+        bboxes = bboxes[indices]
+        scores = scores[indices].reshape((-1,1))
+        cls_ids = cls_ids[indices].reshape((-1,1))
+        preds = np.concatenate([bboxes,scores,cls_ids],axis=1)
+
+        # 对结果进行编码
+        outputs = []
+        for x1, y1, x2, y2, score, cls_id in preds:
+            x1 = round(x1)
+            y1 = round(y1)
+            x2 = round(x2)
+            y2 = round(y2)
+            cls_id = int(cls_id)
+            score = round(score, 4)
+            outputs.append({"bbox": [x1, y1, x2, y2],
+                            "score": score,
+                            "cls_id": int(self.class_names.index(self.class_names_dict[cls_id])),
+                            "cls_name": self.class_names_dict[cls_id]})
+        return outputs
+
+    def postprocess(self,outputs,image_shapes):
+        """
+        这是YOLOS模型后处理函数
+        Args:
+            outputs: 模型输出结果张量,shape为(batchsize,anchor_num,6)
+            image_shapes: 图像尺度数组，shape为(batchsize,2)
+        Returns:
+        """
+        preds = []
+        for i in np.arange(self.image_num):
+            _image_shape = image_shapes[i]
+            dets = outputs[i]
+            # 对预测框进行后处理
+            pred = self.postprocess_single_image(dets,_image_shape)
+            if len(pred) == 0:
+                preds.append([])
+            else:
+                preds.append(pred)
+        return preds
+
+    def detect(self,image,export_time=False,print_detection_result=False):
+        """
+        这是YOLOS模型检测图像的函数
+        Args:
+            image: 输入图像，可以为单张图像也可以为图像数组
+            export_time: 是否输出时间信息标志位，默认为False
+            print_detection_result: 是否打印检测结果,默认为Fasle
+        Returns:
+        """
+        # 获取图像个数
+        if isinstance(image,list):
+            self.image_num = len(image)
+            image = np.array(image)
+        elif isinstance(image,np.ndarray):
+            shape = np.shape(image)
+            if len(shape) == 3:
+                self.image_num = 1
+                image = np.expand_dims(image, 0)
+            else:
+                self.image_num = shape[0]
+
+        # 做图像预处理
+        preprocess_start = time.time()
+        image_tensor,image_shapes = self.preprocess(image)
+        preprocess_end = time.time()
+        preprocess_time = (preprocess_end-preprocess_start)*1000
+        # 模型推理
+        if self.engine is None:
+            return []
+        inference_start = time.time()
+        outputs = self.engine.inference([image_tensor])[0]
+        inference_end = time.time()
+        inference_time = (inference_end-inference_start)*1000
+        if outputs is None:
+            return []
+        # 对推理结果进行后处理
+        postprocess_start = time.time()
+        outputs = self.postprocess(outputs,image_shapes)
+        postprocess_end = time.time()
+        postprocess_time = (postprocess_end-postprocess_start)*1000
+        detect_time = preprocess_time+inference_time+postprocess_time
+        self.logger.info("预处理时间：{0:.2f}ms,推理时间:{1:.2f}ms,后处理时间：{2:.2f}ms,检测时间：{3:.2f}ms"
+                         .format(round(preprocess_time,2),round(inference_time,2),
+                                 round(postprocess_time,2),round(detect_time,2)))
+
+        if self.image_num == 1:         # 仅有一张图像，则进行降维
+            outputs = outputs[0]
+            if print_detection_result:
+                for output in outputs:
+                    x1,y1,x2,y2 = output['bbox']
+                    score = output['score']
+                    cls_name = output['cls_name']
+                    x1 = int(round(x1))
+                    y1 = int(round(y1))
+                    x2 = int(round(x2))
+                    y2 = int(round(y2))
+                    self.logger.info("检测到{0}, bbox: {1},{2},{3},{4},"
+                                     "score:{5:.4f}".format(cls_name, x1, y1, x2, y2, score))
+        else:
+            if print_detection_result:
+                for i in range(self.image_num):
+                    for output in outputs[i]:
+                        x1,y1,x2,y2 = output['bbox']
+                        score = output['score']
+                        cls_name = output['cls_name']
+                        x1 = int(round(x1))
+                        y1 = int(round(y1))
+                        x2 = int(round(x2))
+                        y2 = int(round(y2))
+                        self.logger.info("检测到{0}, bbox: {1},{2},{3},{4},"
+                                         "score:{5:.4f}".format(cls_name, x1, y1, x2, y2, score))
+        if export_time:
+            return outputs, {"preprocess_time": preprocess_time,
+                             "inference_time": inference_time,
+                             "postprocess_time": postprocess_time,
+                             "detect_time": detect_time}
+        else:
+            return outputs
+
+    def detect_video(self,video_path,video_result_path,interval=-1,print_detection_result=False):
+        """
+        这是检测视频的函数
+        Args:
+            video_path: 视频路径
+            video_result_path: 检测结果视频路径
+            interval: 视频抽帧频率,默认为-1,逐帧检测
+            print_detection_result: 是否打印检测结果，默认为False
+        Returns:
+        """
+        # 初始化输入视频
+        vid_cap = cv2.VideoCapture(video_path)
+        if not vid_cap.isOpened():
+            raise IOError("Couldn't open webcam or video")
+        fps = int(round(vid_cap.get(cv2.CAP_PROP_FPS)))  # 视频的fps
+        w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+        # 初始化检测结果视频
+        vid_writer = cv2.VideoWriter(video_result_path,cv2.VideoWriter_fourcc(*'mp4v'),fps, (w, h))
+
+        # 遍历视频，逐帧进行检测
+        cnt = -1
+        while True:
+            return_value, frame = vid_cap.read()
+            cnt += 1
+            #print(return_value)
+            if return_value:
+                if interval == -1:      #  逐帧检测
+                    preds = self.detect(frame,False,print_detection_result)
+                    if len(preds) == 0:
+                        continue
+                    detect_image = draw_detection_results(frame, preds, self.colors)
+                    vid_writer.write(detect_image)
+                else:                   # 间隔ineterval秒检测
+                    if cnt % (interval*fps) == 0:
+                        preds = self.detect(frame)
+                        if len(preds) == 0:
+                            continue
+                        detect_image = draw_detection_results(frame, preds, self.colors)
+                        vid_writer.write(detect_image)
+            else:
+                break
+        vid_cap.release()
+        vid_writer.release()
+    

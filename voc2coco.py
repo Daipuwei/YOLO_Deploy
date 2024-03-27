@@ -88,9 +88,16 @@ def voc2coco(voc_dataset_dir,coco_dataset_dir,class_names,save_image=False,choic
     if save_image:
         print("开始复制图片")
         size = len(coco_image_paths)
-        # batch_size = size // (cpu_count()-1)
-        batch_size = size // 64
-        pool = Pool(processes=cpu_count()-1)
+        if size // cpu_count() != 0:
+            num_threads = cpu_count()
+        elif size // (cpu_count() // 2) != 0:
+            num_threads = cpu_count() // 2
+        elif size // (cpu_count() // 4) != 0:
+            num_threads = cpu_count() // 4
+        else:
+            num_threads = 1
+        batch_size = size // num_threads
+        pool = Pool(processes=num_threads)
         for start in np.arange(0,size,batch_size):
             end = int(np.min([start+batch_size,size]))
             batch_coco_image_paths = coco_image_paths[start:end]
@@ -241,7 +248,6 @@ def get_classes(classes_path):
     with open(classes_path, 'r') as f:
         for line in f.readlines():
             classes_names.append(line.strip())
-    # classes_names = np.array(classes_names)
     return classes_names
 
 class NpEncoder(json.JSONEncoder):

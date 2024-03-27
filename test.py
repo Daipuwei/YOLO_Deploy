@@ -10,6 +10,7 @@
 """
 
 import os
+import sys
 import cv2
 import json
 import numpy as np
@@ -67,8 +68,6 @@ def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='
     logger.info("共计有{}张图像需要进行检测".format(image_num))
 
     # 初始化json文件路径
-    time = datetime.now().strftime('%Y%m%d%H%M%S')
-    result_dir = os.path.join(result_dir, mode, time)
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
     result_txt_path = os.path.join(result_dir, 'result.txt')
@@ -110,10 +109,10 @@ def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='
             # 保存检测图片
             if save_image:
                _, image_name = os.path.split(image_path)
-               draw_image = draw_detection_results(image, preds, class_names, colors)
+               draw_image = draw_detection_results(image, preds,colors)
                cv2.imwrite(os.path.join(detect_image_dir, image_name), draw_image)
             # 初始化图像信息
-            h, w, c = np.shape(image)
+            h, w, _ = np.shape(image)
             _, image_name = os.path.split(image_path)
             image_infos.append({'file_name': image_name, 'id': image_cnt, 'width': w, 'height': h})
             # 初始化图像每个gt信息
@@ -126,10 +125,12 @@ def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='
                                       'id': gt_annotation_cnt})
                 gt_annotation_cnt += 1
             # 初始化图像中每个预测结果
-            for x1, y1, x2, y2, score, cls_id in preds:
+            for pred in preds:
+                x1,y1,x2,y2 = pred["bbox"]
+                cls_id = pred['cls_id']
+                score = pred['score']
                 bbox_w = x2 - x1
                 bbox_h = y2 - y1
-                cls_id = int(cls_id)
                 detection_results.append({'image_id': image_cnt,
                                           'iscrowd': 0,
                                           'category_id': cls_id,
@@ -161,8 +162,6 @@ def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='
         f.write(json_data)
     logger.info("测试集真实标签保存路径为：{0}".format(gt_json_result_path))
     with open(pred_json_result_path, 'w+', encoding="utf-8") as f:
-        # json_data = json.dumps(detection_results, indent=4, separators=(',', ': '),
-        #                        cls=NpEncoder, ensure_ascii=False)
         pred_json_dict = {}
         pred_json_dict['images'] = image_infos
         pred_json_dict["annotations"] = np.array(detection_results)
@@ -173,12 +172,11 @@ def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='
     logger.info("测试集检测标签保存路径为：{0}".format(pred_json_result_path))
 
     # 计算车牌检测模型测试集上的性能
-    cocoGt = COCO(gt_json_result_path)
-    #cocoDt = cocoGt.loadRes(pred_json_result_path)
-    cocoDt = COCO(pred_json_result_path)
+    coco_gt = COCO(gt_json_result_path)
+    coco_pred = COCO(pred_json_result_path)
 
     # 创建检测框评估器
-    evaluator = COCOeval(cocoGt, cocoDt,iouType='bbox')
+    evaluator = COCOeval(coco_gt, coco_pred,iouType='bbox')
     evaluator.evaluate()
     evaluator.accumulate()
     evaluator.summarize()
@@ -187,22 +185,25 @@ def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='
 
     # 计算每个类别的AP和AR指标，iou=0.5
     class_stats = []
-    eval_info_list = ["{0}\t{1}\t{2}".format("category name".rjust(15),"mAP@0.5".rjust(15),"mAR@0.5".rjust(15))]
+    eval_info_table = []
     for i in range(len(class_names)):
-        stats, print_info = summarize(evaluator, catId=i)
-        ap50,ap75,ap95,ar50,ar75,ar95 =stats[1:7]
-        class_stats.append([ap50,ap75,ap95,ar50,ar75,ar95])
-        eval_info_list.append("{0}\t{1:15.4f}\t{2:15.4f}".format(class_names[i].rjust(15),ap50,ar50))
+        stats, _ = summarize(evaluator, catId=i)
+        ap50_95,ap50,ap75,ap95,ar50,ar75,ar95,ar50_95 =stats[0:8]
+        class_stats.append([ap50_95,ar50_95,ap50,ap75,ap95,ar50,ar75,ar95])
+        eval_info_table.append([class_names[i],ap50_95,ar50_95,ap50,ap75,ap95,ar50,ar75,ar95])
     class_stats = np.array(class_stats)
     class_stats = np.mean(class_stats, 0)
-    eval_info = "\n".join(eval_info_list)
+    eval_info_table.append(["all",*class_stats])
+    eval_info_table = tabulate(eval_info_table,
+                               tablefmt="pipe",numalign="left",
+                               headers=["类别","mAP@0.5:0.95","mAR@0.5:0.95","mAP@0.5",
+                                        "mAR@0.5","mAP@0.75","mAR@0.75","mAP@0.95","mAR@0.95"])
 
     # 打印模型在测试集上的检测性能
-    logger.info("检测模型在测试集上mAP@0.5={0:.4f},mAP@0.5:0.95={1:.4f}".format(map50, map))
-    logger.info("检测模型在测试集上mAP@0.5={0:.4f},mAR@0.5={1:.4f}".format(class_stats[0], class_stats[1]))
-    logger.info("检测模型在测试集上mAP@0.5:0.95={0:.4f},mAR@0.5:0.95={1:.4f}".format(map, mar))
+    logger.info("检测模型在测试集上mAP@0.5={0:.4f},mAR@0.5={1:.4f}".format(class_stats[2], class_stats[5]))
+    logger.info("检测模型在测试集上mAP@0.5:0.95={0:.4f},mAR@0.5:0.95={1:.4f}".format(class_stats[0], class_stats[1]))
     logger.info("检测模型在测试集上各个类别检测性能如下：")
-    logger.info(eval_info)
+    logger.info(eval_info_table)
 
     # 保存结果到txt
     with open(result_txt_path, 'w+', encoding="utf-8") as f:
@@ -217,11 +218,10 @@ def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='
         f.write("测试集路径为：{0}\n".format(dataset_dir))
         f.write("测试集真实标签保存路径为：{0}\n".format(gt_json_result_path))
         f.write("测试集检测标签保存路径为：{0}\n".format(pred_json_result_path))
-        f.write("检测模型在测试集上mAP@0.5={0:.4f},mAP@0.5:0.95={1:.4f}\n".format(map50,map))
-        f.write("检测模型在测试集上mAP@0.5={0:.4f},mAR@0.5={1:.4f}\n".format(class_stats[0],class_stats[1]))
-        f.write("检测模型在测试集上mAP@0.5:0.95={0:.4f},mAR@0.5:0.95={1:.4f}\n".format(map,mar))
+        f.write("检测模型在测试集上mAP@0.5={0:.4f},mAR@0.5={1:.4f}\n".format(class_stats[2], class_stats[5]))
+        f.write("检测模型在测试集上mAP@0.5:0.95={0:.4f},mAR@0.5:0.95={1:.4f}\n".format(class_stats[0], class_stats[1]))
         f.write("检测模型在测试集上各个类别检测性能如下：\n")
-        f.write(eval_info)
+        f.write(eval_info_table)
 
 def summarize(self, catId=None):
     """
@@ -301,17 +301,26 @@ def run_main():
 
     # 初始化检测模型
     model_type = cfg["DetectionModel"]["model_type"].lower()
+    model_path = cfg["DetectionModel"]["engine_model_path"]
+    _,model_name = os.path.split(model_path)
     logger = logger_config(cfg['log_path'], model_type)
     if model_type == 'yolov5':
         from model import YOLOv5
-        detection_model = YOLOv5(logger=logger, cfg=cfg)
+        detection_model = YOLOv5(logger=logger, cfg=cfg["DetectionModel"])
+    elif model_type == 'yolov8':
+        from model import YOLOv8
+        detection_model = YOLOv8(logger=logger, cfg=cfg["DetectionModel"])
+    elif model_type == 'yolos':
+        from model import YOLOS
+        detection_model = YOLOS(logger=logger, cfg=cfg["DetectionModel"])
     else:
-        from model import YOLOv5
-        detection_model = YOLOv5(logger=logger, cfg=cfg)
+        sys.exit()
 
     # 初始化相关路径路径
-    result_dir = os.path.abspath(opt.result_dir)
+    time = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
     dataset_dir = os.path.abspath(opt.dataset_dir)
+    _,dataset_name = os.path.split(dataset_dir)
+    result_dir = os.path.join(opt.result_dir, dataset_name,model_name,time)
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
 
@@ -324,15 +333,15 @@ def run_main():
     if cfg['DetectionModel']['input_shape'][1] > 3:
         batch_size, h, w, c = cfg['DetectionModel']['input_shape']
     else:
-        batch_size, c, h, w, = cfg['DetectionModel']['input_shape']
-    image_tensor = np.random.random((batch_size,h,w,c))
-    for i in np.arange(100):
+        batch_size, c, h, w = cfg['DetectionModel']['input_shape']
+    image_tensor = np.random.random((batch_size, h, w, c))*255
+    for _ in np.arange(100):
         detection_model.detect(image_tensor)
     logger.info("预热模型结束")
 
     # 测试检测性能
-    test(logger,detection_model,dataset_dir,
-         result_dir,opt.dataset_type,opt.choice,opt.save_image)
+    test(logger,detection_model,dataset_dir,result_dir,
+         opt.dataset_type,opt.choice,opt.save_image,opt.export_time,opt.print_detection_result)
 
 if __name__ == '__main__':
     run_main()

@@ -35,8 +35,6 @@ class ArgsParser(ArgumentParser):
 
     def parse_args(self, argv=None):
         args = super(ArgsParser, self).parse_args(argv)
-        # assert args.config is not None, \
-        #    "Please specify --config=configure_file_path."
         args.opt = self._parse_opt(args.opt)
         return args
     def _parse_opt(self, opts):

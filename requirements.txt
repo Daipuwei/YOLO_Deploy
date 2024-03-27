@@ -1,9 +1,9 @@
 Cython==0.29.33
-numpy==1.21.6
+numpy==1.23.1
 onnx==1.13.1
 onnx-simplifier==0.4.19
 onnxoptimizer==0.3.10
-onnxruntime==1.9.0
+onnxruntime-gpu==1.10.0
 opencv-contrib-python==4.7.0.72
 opencv-python==4.7.0.72
 pandas==1.5.3
@@ -16,3 +16,6 @@ seaborn==0.12.2
 six==1.16.0
 tqdm==4.65.0
 yacs==0.1.8
+pascal_voc_writer
+labelme
+tabulate

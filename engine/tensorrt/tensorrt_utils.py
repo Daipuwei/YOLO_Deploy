@@ -17,9 +17,7 @@ import tensorrt as trt
 
 TRT_LOGGER = trt.Logger(trt.Logger.VERBOSE)
 
-
-# TRT_LOGGER = trt.Logger()
-class TensorRT_Calibrator(trt.IInt8EntropyCalibrator2):
+class TensorRTCalibrator(trt.IInt8EntropyCalibrator2):
 
     def __init__(self, calibration_dataloader, calibrator_table_path):
         """
@@ -28,41 +26,55 @@ class TensorRT_Calibrator(trt.IInt8EntropyCalibrator2):
             calibration_dataloader: 量化数据集加载器
             calibrator_table_path: 校准量化表文件路径
         """
-        super(TensorRT_Calibrator, self).__init__()
+        super(TensorRTCalibrator, self).__init__()
         # 初始化相关参数
         self.calibrator_table = os.path.abspath(calibrator_table_path)
         self.calibration_dataloader = calibration_dataloader
         self.device_input = cuda.mem_alloc(self.calibration_dataloader.get_calibration_data_size())
 
     def get_batch(self, names, p_str=None):
-        # print("================================")
-        # print("images")
-        # print("================================")
+        """
+        这是获取一个小批量数据的函数
+        Args:
+            names:
+            p_str:
+        Returns:
+        """
         batch_input_tensor = self.calibration_dataloader.get_batch_data()
-        # print("**************")
-        # print(batch_input_tensor)
-        # print(batch_input_tensor.size)
-        # print("**************")
         if not batch_input_tensor.size:
             return None
         cuda.memcpy_htod(self.device_input, batch_input_tensor)
         return [int(self.device_input)]
 
     def get_batch_size(self):
+        """
+        这是获取batch_size的函数
+        Returns:
+        """
         return self.calibration_dataloader.get_batch_size()
 
     def read_calibration_cache(self):
+        """
+        这是读取校准表的函数
+        Returns:
+        """
         # If there is a cache, use it instead of calibrating again. Otherwise, implicitly return None.
         if os.path.exists(self.calibrator_table):
             with open(self.calibrator_table, "rb") as f:
                 return f.read()
 
     def write_calibration_cache(self, cache):
+        """
+        这是将校准缓存写入校准表
+        Args:
+            cache:
+        Returns:
+        """
         with open(self.calibrator_table, "wb") as f:
             f.write(cache)
 
 
-class Calibration_Dataloader():
+class CalibrationDataloader(object):
 
     def __init__(self, input_shape, calibrator_image_dir, data_type='float32'):
         """
@@ -74,21 +86,18 @@ class Calibration_Dataloader():
         """
         # 初始化相关变量
         if input_shape[1] > 3:
+            self.is_nchw = False
             self.batch_size, self.height, self.width, self.channel = input_shape
             self.input_shape = (self.batch_size, self.height, self.width, self.channel)
         else:
+            self.is_nchw = True
             self.batch_size, self.channel, self.height, self.width = input_shape
             self.input_shape = (self.batch_size, self.channel, self.height, self.width)
         self.calibrator_image_dir = os.path.abspath(calibrator_image_dir)
 
         # 初始化校准图片路径
         self.image_paths = []
-        if os.path.exists(calibrator_image_dir) or len(list(os.listdir(calibrator_image_dir))):
-            for image_name in os.listdir(self.calibrator_image_dir):
-                self.image_paths.append(os.path.join(self.calibrator_image_dir, image_name))
         for image_name in os.listdir(self.calibrator_image_dir):
-            # print(image_name)
-            # print(os.path.join(self.calibrator_image_dir,image_name))
             self.image_paths.append(os.path.join(self.calibrator_image_dir, image_name))
         self.image_paths = np.array(self.image_paths)
         self.logger.info("Find {} images in Calibration Dataset".format(len(self.image_paths)))
@@ -108,12 +117,24 @@ class Calibration_Dataloader():
         return self.max_batch_idx
 
     def get_batch_data(self):
+        """
+        这是获取一个batch数据的函数
+        Returns:
+        """
         pass
 
     def get_batch_size(self):
+        """
+        这是获取batch_size的函数
+        Returns:
+        """
         return self.batch_size
 
     def get_calibration_data_size(self):
+        """
+        这是获取校准数据张量大小的函数
+        Returns:
+        """
         return self.calibration_data_size
 
 
@@ -133,7 +154,6 @@ def onnx2tensorrt(logger, onnx_model_path, tensorrt_model_path, mode, calibrator
         onnx2tensorrtv8(logger, onnx_model_path, tensorrt_model_path, mode, calibrator)
     else:
         onnx2tensorrtv7(logger, onnx_model_path, tensorrt_model_path, mode, calibrator)
-
 
 def onnx2tensorrtv7(logger, onnx_model_path, tensorrt_model_path, mode, calibrator=None):
     """
@@ -184,7 +204,6 @@ def onnx2tensorrtv7(logger, onnx_model_path, tensorrt_model_path, mode, calibrat
             with open(tensorrt_model_path, 'wb') as f:
                 f.write(engine.serialize())
             logger.info("Engine file has already saved to {}!".format(tensorrt_model_path))
-
 
 def onnx2tensorrtv8(logger, onnx_model_path, tensorrt_model_path, mode, calibrator=None):
     """

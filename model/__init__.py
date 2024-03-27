@@ -8,3 +8,5 @@
 
 from .base_model import DetectionModel
 from .yolov5 import *
+from .yolov8 import *
+from .yolos import *

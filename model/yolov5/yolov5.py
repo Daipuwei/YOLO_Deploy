@@ -53,11 +53,15 @@ class YOLOv5(DetectionModel):
         # 填充像素并等比例缩放
         h,w = np.shape(image)[0:2]
         image_tensor = letterbox(image,(self.h,self.w))
-        #cv2.imwrite("demo.jpg",image_tensor)
-        image_tensor = np.transpose(image_tensor,(2, 0, 1))
-        image_tensor = np.ascontiguousarray(image_tensor)
+        image_tensor = image_tensor.astype(np.float32)
+        # BGR转RGB
+        image_tensor = cv2.cvtColor(image_tensor, cv2.COLOR_BGR2RGB)
         # 归一化
         image_tensor = image_tensor / 255.0
+        # hwc->chw
+        if self.engine.get_is_nchw():
+            image_tensor = np.transpose(image_tensor, (2, 0, 1))
+        image_tensor = np.ascontiguousarray(image_tensor)
         return image_tensor,(h,w)
 
     def preprocess_batch_images(self,batch_images):
@@ -107,17 +111,13 @@ class YOLOv5(DetectionModel):
         Returns:
         """
         # 根据置信度对预测框进行过滤
-        #print(np.shape(dets))
         obj_conf = dets[:, 4]
         dets = dets[obj_conf > self.confidence_threshold]
         obj_conf = obj_conf[obj_conf > self.confidence_threshold]
-        #print(np.shape(obj_conf))
 
         # 计算每个类别的后验概率
         cls_id = np.argmax(dets[:, 5:],axis=1)
-        # print(np.shape(cls_id))
         scores = np.array([dets[i, 5+id] for i,id in enumerate(cls_id)])
-        # print(np.shape(scores))
         scores *= obj_conf
         bboxes = dets[..., 0:4]
 
@@ -141,7 +141,6 @@ class YOLOv5(DetectionModel):
         if len(indices) == 0:
             return []
         bboxes = bboxes[indices]
-        #print(bboxes)
         scores = scores[indices].reshape((-1,1))
         cls_id = cls_id[indices].reshape((-1,1))
         preds = np.concatenate([bboxes,scores,cls_id],axis=1)
@@ -265,12 +264,12 @@ class YOLOv5(DetectionModel):
         else:
             return outputs
 
-    def detect_video(self,video_path,result_dir,interval=-1,print_detection_result=False):
+    def detect_video(self,video_path,video_result_path,interval=-1,print_detection_result=False):
         """
         这是检测视频的函数
         Args:
             video_path: 视频路径
-            result_dir: 检测结果保存文件夹路径
+            video_result_path: 检测结果视频路径
             interval: 视频抽帧频率,默认为-1,逐帧检测
             print_detection_result: 是否打印检测结果，默认为False
         Returns:
@@ -284,9 +283,6 @@ class YOLOv5(DetectionModel):
         h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
         # 初始化检测结果视频
-        dir,video_name = os.path.split(video_path)
-        fname,ext = os.path.splitext(video_name)
-        video_result_path = os.path.join(result_dir,fname+"_result.mp4")
         vid_writer = cv2.VideoWriter(video_result_path,cv2.VideoWriter_fourcc(*'mp4v'),fps, (w, h))
 
         # 遍历视频，逐帧进行检测
@@ -307,7 +303,7 @@ class YOLOv5(DetectionModel):
                         preds = self.detect(frame)
                         if len(preds) == 0:
                             continue
-                        detect_image = draw_detection_results(frame, preds, self.class_names, self.colors)
+                        detect_image = draw_detection_results(frame, preds, self.colors)
                         vid_writer.write(detect_image)
             else:
                 break
