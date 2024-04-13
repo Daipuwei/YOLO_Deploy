@@ -15,7 +15,9 @@ import numpy as np
 import pycuda.autoinit
 import pycuda.driver as cuda
 import tensorrt as trt
+
 from ..base_engine import BaseEngine
+from engine import ENGINE_REGISTRY
 
 class HostDeviceMem(object):
     """ Host and Device Memory Package """
@@ -155,3 +157,18 @@ class TensorRTEngine(BaseEngine):
         # Pop the device
         self.device_ctx.pop()
         return host_outputs
+
+@ENGINE_REGISTRY.register()
+def tensorrt(logger,cfg,**kwargs):
+    """
+    这是初始化ONNX推理引擎的函数
+    Args:
+        logger: 日志类实例
+        cfg: 参数配置字典
+        kwargs: 自定义参数字典
+    Returns:
+    """
+    tensorrt_model_path = cfg["engine_model_path"]
+    gpu_id = kwargs['gpu_id']
+    engine = TensorRTEngine(logger,tensorrt_model_path,gpu_id,**kwargs)
+    return engine

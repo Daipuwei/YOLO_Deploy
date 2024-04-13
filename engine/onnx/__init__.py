@@ -6,3 +6,4 @@
 # @Software: PyCharm
 
 from .onnx_model import ONNXEngine
+from .onnx_model import onnx

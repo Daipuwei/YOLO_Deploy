@@ -13,7 +13,10 @@ import os
 import sys
 import numpy as np
 import onnxruntime as rt
+
 from ..base_engine import BaseEngine
+from ..build import ENGINE_REGISTRY
+
 
 class ONNXEngine(BaseEngine):
 
@@ -100,3 +103,17 @@ class ONNXEngine(BaseEngine):
         outputs = [np.reshape(_output, _output_shape) for _output, _output_shape in zip(outputs, self.output_shapes)]
         outputs = np.array(outputs, dtype=np.float32)
         return outputs
+
+@ENGINE_REGISTRY.register()
+def onnx(logger,cfg,**kwargs):
+    """
+    这是初始化ONNX推理引擎的函数
+    Args:
+        logger: 日志类实例
+        cfg: 参数配置字典
+        kwargs: 自定义参数字典
+    Returns:
+    """
+    onnx_model_path = cfg["engine_model_path"]
+    engine = ONNXEngine(logger,onnx_model_path,**kwargs)
+    return engine

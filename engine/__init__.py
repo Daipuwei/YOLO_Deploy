@@ -6,5 +6,7 @@
 # @Software: PyCharm
 
 from .base_engine import BaseEngine
+from .build import ENGINE_REGISTRY
+from .build import build_engine
 from .onnx import *
 from .tensorrt import *

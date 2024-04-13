@@ -159,11 +159,14 @@ def draw_detection_results(image,detecion_outputs,colors):
         x2 = int(round(x2))
         y2 = int(round(y2))
         text = "{0}:{1:.4f}".format(cls_name,score)
+        # 绘制检测框
+        cv2.rectangle(image, (x1, y1), (x2, y2), colors[cls_id], thickness=tl, lineType=cv2.LINE_AA)
+        # 初始化标签字符串宽高及其坐标
         tf = max(tl - 1, 1)
-        t_size = cv2.getTextSize(text, 0, fontScale=tl / 3, thickness=tf)[0]
-        cv2.rectangle(image, (int(x1), int(y1)), (int(x2), int(y2)), colors[cls_id], thickness=tl, lineType=cv2.LINE_AA)
-        cv2.rectangle(image, (int(x1), int(y1)), (int(x1 + t_size[0]), int(y1 - t_size[1] - 3)), colors[cls_id],
-                      thickness=-1, lineType=cv2.LINE_AA)
+        text_w,text_h = cv2.getTextSize(text, 0, fontScale=tl / 3, thickness=tf)[0]
+        outside = y1 - text_h >= 3
+        text_x1,text_y1 = x1,y1
+        text_x2,text_y2 = x1+text_w,y1-text_h-3 if outside else y1+text_h+3
         mean_color = np.mean(colors[cls_id])
         #print(colors[cls_id],mean_color)
         if mean_color > 128:
@@ -172,6 +175,12 @@ def draw_detection_results(image,detecion_outputs,colors):
             text_color = (255, 255, 255)
         # cv2.putText(image, text, (int(x1), int(y1 - 2)), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=tl / 3,
         #             color=(255, 255, 255), thickness=tf, lineType=cv2.LINE_AA)
-        cv2.putText(image, text, (int(x1), int(y1 - 2)), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=tl / 3,
-                            color=text_color, thickness=tf, lineType=cv2.LINE_AA)
+        # cv2.putText(image, text, (text_x1,text_y1-5 if outside else text_y1+5), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=tl / 3,
+        #                     color=text_color, thickness=tf, lineType=cv2.LINE_AA)
+        # 绘制标签字符串
+        cv2.rectangle(image, (text_x1,text_y1), (text_x2,text_y2), colors[cls_id],
+                      thickness=-1, lineType=cv2.LINE_AA)
+        cv2.putText(image, text, (x1,y1-2 if outside else y1+text_h+2),
+                    fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=tl / 3,
+                    color=text_color, thickness=tf, lineType=cv2.LINE_AA)
     return image

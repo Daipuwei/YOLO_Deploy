@@ -9,53 +9,35 @@
     这是定义检测模型基础类的脚本
 """
 
-import os
-
-from engine.onnx import ONNXEngine
-from engine.tensorrt import TensorRTEngine
 from utils.detection_utils import random_generate_colors
 
 class DetectionModel(object):
 
-    def __init__(self,logger,engine_model_path,class_names,model_type="yolov5",
-                 engine_type='onnx',confidence_threshold=0.5,iou_threshold=0.5,gpu_id=0):
+    def __init__(self,logger,engine,class_names,model_type="yolov5",
+                 confidence_threshold=0.5,iou_threshold=0.5,**kwargs):
         """
         这是抽象检测模型类的初始化函数
         Args:
             logger: 日志类实例
-            engine_model_path: 模型文件路径
+            engine: 推理引擎实例
             class_names: 目标分类名称数组
             model_type: 模型类型,默认为'yolov5'
-            engine_type: 推理引擎类型，默认为'onnx'
             confidence_threshold: 置信度阈值，默认为0.5
             iou_threshold: iou阈值，默认为0.5
-            gpu_id: gpu设备号,默认为0
         """
         # 初始化模型参数
         self.logger = logger
-        self.engine_model_path = os.path.abspath(engine_model_path)
         self.class_names = class_names
         self.model_type = model_type
-        self.engine_type = engine_type.lower()
         self.confidence_threshold = confidence_threshold
         self.iou_threshold = iou_threshold
         self.image_num = 0
-        self.gpu_id = gpu_id
+
+        # 初始化推理引擎
+        self.engine = engine
 
         # 初始化颜色列表
         self.colors = random_generate_colors(len(self.class_names))
-
-        # 初始化推理引擎
-        if self.engine_type == 'onnx':
-            self.engine = ONNXEngine(logger=logger,
-                                     onnx_model_path=self.engine_model_path)
-        elif self.engine_type == 'tensorrt':
-            self.engine = TensorRTEngine(logger=self.logger,
-                                         tensorrt_model_path=self.engine_model_path,
-                                         gpu_idx=self.gpu_id)
-        else:
-            self.engine = ONNXEngine(logger=self.logger,
-                                     onnx_model_path=self.engine_model_path)
 
         # 初始化模型输入shape
         self.input_shape = self.engine.get_input_shape()[0]

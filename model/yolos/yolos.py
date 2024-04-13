@@ -15,7 +15,10 @@ import time
 import numpy as np
 
 from model import DetectionModel
+from model import MODEL_REGISTRY
+from engine import build_engine
 
+from utils import logger_config
 from utils import get_classes
 from utils import draw_detection_results
 
@@ -31,6 +34,7 @@ class YOLOS(DetectionModel):
         """
         # 初始化YOLOS相关变量
         class_names = get_classes(os.path.abspath(cfg['class_name_path']))
+        engine = build_engine(logger,cfg, gpu_id=gpu_id)
         self.mean = np.array([0.485, 0.456, 0.406])
         self.std = np.array([0.229, 0.224, 0.225])
         # COCO数据集原始91类别映射关系
@@ -48,13 +52,12 @@ class YOLOS(DetectionModel):
                                  79: 'oven',80: 'toaster', 81: 'sink', 82: 'refrigerator', 84: 'book', 85: 'clock', 86: 'vase',
                                  87: 'scissors', 88: 'teddy bear', 89: 'hair drier', 90: 'toothbrush'}
         super(YOLOS,self).__init__(logger=logger,
-                                    class_names=class_names,
-                                    engine_model_path=cfg['engine_model_path'],
-                                    model_type=cfg['model_type'],
-                                    engine_type=cfg['engine_type'],
-                                    confidence_threshold=cfg['confidence_threshold'],
-                                    iou_threshold=cfg['iou_threshold'],
-                                    gpu_id=gpu_id)
+                                   engine=engine,
+                                   class_names=class_names,
+                                   model_type=cfg['model_type'],
+                                   confidence_threshold=cfg['confidence_threshold'],
+                                   iou_threshold=cfg['iou_threshold'],
+                                   gpu_id=gpu_id)
         self.logger.info("初始化YOLOS检测模型成功")
 
     def preprocess_single_image(self,image):
@@ -307,4 +310,18 @@ class YOLOS(DetectionModel):
                 break
         vid_cap.release()
         vid_writer.release()
-    
+
+
+
+@MODEL_REGISTRY.register()
+def yolos(logger,cfg,**kwargs):
+    """
+    这是YOLOS的初始化函数
+    Args:
+        logger: 日志类实例
+        cfg: 参数配置字典
+        **kwargs: 自定义参数
+    Returns:
+    """
+    model = YOLOS(logger,cfg,**kwargs)
+    return model

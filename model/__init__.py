@@ -5,8 +5,9 @@
 # @File    : __init__.py.py
 # @Software: PyCharm
 
-
 from .base_model import DetectionModel
-from .yolov5 import *
-from .yolov8 import *
-from .yolos import *
+from .build import MODEL_REGISTRY,build_model
+from .yolov5.yolov5 import *
+from .yolov8.yolov8 import *
+from .yolos.yolos import *
+

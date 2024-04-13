@@ -14,7 +14,9 @@ import cv2
 import time
 import numpy as np
 
+from model import MODEL_REGISTRY
 from model import DetectionModel
+from engine import build_engine
 
 from utils import letterbox
 from utils import get_classes
@@ -24,7 +26,7 @@ from utils import draw_detection_results
 
 class YOLOv5(DetectionModel):
 
-    def __init__(self,logger,cfg,gpu_id=0):
+    def __init__(self,logger,cfg,gpu_id=0,**kwargs):
         """
         这是YOLOv5的初始化函数
         Args:
@@ -33,14 +35,15 @@ class YOLOv5(DetectionModel):
             gpu_id: gpu设备号,默认为0
         """
         class_names = get_classes(os.path.abspath(cfg['class_name_path']))
+        engine = build_engine(logger,cfg,gpu_id=gpu_id)
         super(YOLOv5,self).__init__(logger=logger,
+                                    engine=engine,
                                     class_names=class_names,
-                                    engine_model_path=cfg['engine_model_path'],
                                     model_type=cfg['model_type'],
-                                    engine_type=cfg['engine_type'],
                                     confidence_threshold=cfg['confidence_threshold'],
                                     iou_threshold=cfg['iou_threshold'],
-                                    gpu_id=gpu_id)
+                                    gpu_id=gpu_id,
+                                    *kwargs)
         self.logger.info("初始化YOLOv5检测模型成功")
 
     def preprocess_single_image(self,image):
@@ -309,3 +312,17 @@ class YOLOv5(DetectionModel):
                 break
         vid_cap.release()
         vid_writer.release()
+
+
+@MODEL_REGISTRY.register()
+def yolov5(logger,cfg,**kwargs):
+    """
+    这是YOLOv5的初始化函数
+    Args:
+        logger: 日志类实例
+        cfg: 参数配置字典
+        **kwargs: 自定义参数
+    Returns:
+    """
+    model = YOLOv5(logger,cfg,**kwargs)
+    return model

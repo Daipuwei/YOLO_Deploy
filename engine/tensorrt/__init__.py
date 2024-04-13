@@ -6,6 +6,6 @@
 # @Software: PyCharm
 
 from .tensorrt_model import TensorRTEngine
+from .tensorrt_model import tensorrt
 from .tensorrt_utils import onnx2tensorrt
-from .tensorrt_utils import TensorRTCalibrator
-from .tensorrt_utils import CalibrationDataloader
+from .tensorrt_calibrator import *

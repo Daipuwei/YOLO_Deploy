@@ -22,6 +22,7 @@ from datetime import datetime
 from multiprocessing import Pool
 from multiprocessing import cpu_count
 
+from model import build_model
 from utils import NpEncoder
 from utils import ArgsParser
 from utils import init_config
@@ -281,28 +282,18 @@ def run_main():
     """
     # 初始化参数
     cfg = init_config(opt)
+    logger = init_logger(cfg)
+
     # 初始化检测模型
-    model_type = cfg["DetectionModel"]["model_type"].lower()
-    model_path = cfg["DetectionModel"]["engine_model_path"]
-    _,model_name = os.path.split(model_path)
-    logger = logger_config(cfg['log_path'], model_type)
     detection_models = []
     for _ in np.arange(opt.num_threads):
-        if model_type == 'yolov5':
-            from model import YOLOv5
-            detection_model = YOLOv5(logger=logger, cfg=cfg["DetectionModel"])
-        elif model_type == 'yolov8':
-            from model import YOLOv8
-            detection_model = YOLOv8(logger=logger, cfg=cfg["DetectionModel"])
-        elif model_type == 'yolos':
-            from model import YOLOS
-            detection_model = YOLOS(logger=logger, cfg=cfg["DetectionModel"])
-        else:
-            sys.exit(0)
+        detection_model = build_model(logger, cfg["DetectionModel"], gpu_id=opt.gpu_id)
         detection_models.append(detection_model)
 
     # 初始化图像及其结果保存文件夹路径
-    time = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
+    time = datetime.now().strftime('%Y%m%d%H%M%S')
+    model_path = cfg["DetectionModel"]["engine_model_path"]
+    _,model_name = os.path.split(model_path)
     result_dir = os.path.join(opt.result_dir,model_name,time)
     video = os.path.abspath(opt.video)
 

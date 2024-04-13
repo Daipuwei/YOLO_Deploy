@@ -6,4 +6,4 @@
 # @Software: PyCharm
 
 from .yolos import YOLOS
-from .yolos_trt_calibrator import YOLOSCalibrationDataloader
+from .yolos import yolos

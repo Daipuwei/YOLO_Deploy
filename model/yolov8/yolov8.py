@@ -15,16 +15,19 @@ import time
 import numpy as np
 
 from model import DetectionModel
+from model import MODEL_REGISTRY
+from engine import build_engine
 
 from utils import letterbox
 from utils import get_classes
 from utils import xywh2xyxy
 from utils import scale_coords
 from utils import draw_detection_results
+from utils import logger_config
 
 class YOLOv8(DetectionModel):
 
-    def __init__(self,logger,cfg,gpu_id=0):
+    def __init__(self,logger,cfg,gpu_id=0,**kwargs):
         """
         这是YOLOv8的初始化函数
         Args:
@@ -33,14 +36,15 @@ class YOLOv8(DetectionModel):
             gpu_id: gpu设备号,默认为0
         """
         class_names = get_classes(os.path.abspath(cfg['class_name_path']))
+        engine = build_engine(cfg, gpu_id=gpu_id)
         super(YOLOv8,self).__init__(logger=logger,
+                                    engine=engine,
                                     class_names=class_names,
-                                    engine_model_path=cfg['engine_model_path'],
                                     model_type=cfg['model_type'],
-                                    engine_type=cfg['engine_type'],
                                     confidence_threshold=cfg['confidence_threshold'],
                                     iou_threshold=cfg['iou_threshold'],
-                                    gpu_id=gpu_id)
+                                    gpu_id=gpu_id,
+                                    **kwargs)
         self.logger.info("初始化YOLOv8检测模型成功")
 
     def preprocess_single_image(self,image):
@@ -303,3 +307,15 @@ class YOLOv8(DetectionModel):
         vid_cap.release()
         vid_writer.release()
 
+@MODEL_REGISTRY.register()
+def yolov8(logger,cfg,**kwargs):
+    """
+    这是YOLOv8的初始化函数
+    Args:
+        logger: 日志类实例
+        cfg: 参数配置字典
+        **kwargs: 自定义参数
+    Returns:
+    """
+    model = YOLOv8(logger,cfg,**kwargs)
+    return model

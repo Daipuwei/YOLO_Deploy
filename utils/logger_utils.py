@@ -11,16 +11,15 @@
 
 import logging
 
-def logger_config(log_path,logging_name):
+def logger_config(log_path):
     """
     这是配置日志实例的函数
     Args:
         log_path: 日志文件路径
-        logging_name: 记录中name，可随意
     Returns:
     """
     # 获取logger对象,取名
-    logger = logging.getLogger(logging_name)
+    logger = logging.getLogger()
     # 输出DEBUG及以上级别的信息，针对所有输出的第一层过滤
     logger.setLevel(level=logging.DEBUG)
     # 获取文件日志句柄并设置日志级别，第二层过滤
@@ -35,4 +34,14 @@ def logger_config(log_path,logging_name):
     # 为logger对象添加句柄
     logger.addHandler(handler)
     logger.addHandler(console)
+    return logger
+
+def init_logger(cfg):
+    """
+    这是初始化日志类的函数
+    Args:
+        cfg: 参数配置字典
+    Returns:
+    """
+    logger = logger_config(cfg['log_path'])
     return logger

@@ -11,10 +11,10 @@
 
 import cv2
 import numpy as np
-import pycuda.driver as cuda
 
 from utils import letterbox
-from engine.tensorrt import CalibrationDataloader
+from .build import TENSORRT_CALIBRATION_DATALOADER_REGISTRY
+from .base_tensorrt_calibrator import TensorRTCalibrator,CalibrationDataloader
 
 class YOLOv5CalibrationDataloader(CalibrationDataloader):
 
@@ -68,3 +68,19 @@ class YOLOv5CalibrationDataloader(CalibrationDataloader):
             self.logger.info("batch:[{}/{}]".format(self.batch_idx, self.max_batch_idx))
             self.batch_idx += 1
             return self.calibration_data
+
+@TENSORRT_CALIBRATION_DATALOADER_REGISTRY.register()
+def yolov5_trt_calibrator(logger,input_shape,calibrator_image_dir,data_type,calibrator_table_path):
+    """
+    这是YOLOv5的TensorRT推理引擎INT8校准集加载器的注册函数
+    Args:
+        logger: 日志类实例
+        input_shape: 模型输入尺寸
+        calibrator_image_dir: 校准集文件夹路径
+        data_type: 数据类型
+        calibrator_table_path: 校准表路径
+    Returns:
+    """
+    calibration_dataloader = YOLOv5CalibrationDataloader(logger,input_shape,calibrator_image_dir,data_type)
+    trt_calibrator = TensorRTCalibrator(calibration_dataloader,calibrator_table_path)
+    return trt_calibrator

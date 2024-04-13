@@ -20,13 +20,15 @@ from tabulate import tabulate
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 
+from model import build_model
 from utils import NpEncoder
 from utils import VOCDataset
 from utils import COCODataset
 from utils import ArgsParser
 from utils import save_yaml
 from utils import init_config
-from utils import logger_config
+from utils import init_logger
+from utils import build_dataset
 from utils import draw_detection_results
 
 parser = ArgsParser()
@@ -35,6 +37,7 @@ parser.add_argument('--dataset_dir', type=str, default='./VOC2007', help='datase
 parser.add_argument('--dataset_type', type=str, default="voc",help='dataset type: voc or coco')
 parser.add_argument('--choice', type=str, default="val",help='VOC dataset choice')
 parser.add_argument('--result_dir', type=str, default="./result/eval/VOC2007", help='result save directory')
+parser.add_argument('--gpu_id',  type=int, default=0, help='gpu id')
 parser.add_argument('--save_image', action='store_true', help='save detection image')
 parser.add_argument('--export_time', action='store_true', help='export time')
 parser.add_argument('--print_detection_result', action='store_true', help='export time')
@@ -59,10 +62,11 @@ def test(logger,detection_model,dataset_dir,result_dir,dataset_type='voc',mode='
     # 初始化相关文件路径
     logger.info("开始加载检测数据集")
     batch_size = detection_model.get_batch_size()
-    if dataset_type == 'voc':
-        test_dataloader = VOCDataset(dataset_dir,batch_size,mode=mode)
-    else:
-        test_dataloader = COCODataset(dataset_dir, batch_size, mode=mode)
+    test_dataloader = build_dataset(dataset_type,dataset_dir,batch_size,mode)
+    # if dataset_type == 'voc':
+    #     test_dataloader = VOCDataset(dataset_dir,batch_size,mode=mode)
+    # else:
+    #     test_dataloader = COCODataset(dataset_dir, batch_size, mode=mode)
     image_num = test_dataloader.get_image_num()
     logger.info("结束加载检测数据集")
     logger.info("共计有{}张图像需要进行检测".format(image_num))
@@ -300,26 +304,17 @@ def run_main():
     cfg = init_config(opt)
 
     # 初始化检测模型
-    model_type = cfg["DetectionModel"]["model_type"].lower()
-    model_path = cfg["DetectionModel"]["engine_model_path"]
-    _,model_name = os.path.split(model_path)
-    logger = logger_config(cfg['log_path'], model_type)
-    if model_type == 'yolov5':
-        from model import YOLOv5
-        detection_model = YOLOv5(logger=logger, cfg=cfg["DetectionModel"])
-    elif model_type == 'yolov8':
-        from model import YOLOv8
-        detection_model = YOLOv8(logger=logger, cfg=cfg["DetectionModel"])
-    elif model_type == 'yolos':
-        from model import YOLOS
-        detection_model = YOLOS(logger=logger, cfg=cfg["DetectionModel"])
-    else:
-        sys.exit()
+    logger = init_logger(cfg)
+
+    # 初始化检测模型
+    detection_model = build_model(logger, cfg["DetectionModel"], gpu_id=opt.gpu_id)
 
     # 初始化相关路径路径
-    time = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
+    time = datetime.now().strftime('%Y%m%d%H%M%S')
     dataset_dir = os.path.abspath(opt.dataset_dir)
     _,dataset_name = os.path.split(dataset_dir)
+    model_path = cfg["DetectionModel"]["engine_model_path"]
+    _,model_name = os.path.split(model_path)
     result_dir = os.path.join(opt.result_dir, dataset_name,model_name,time)
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)

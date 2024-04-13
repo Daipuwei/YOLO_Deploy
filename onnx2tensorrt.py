@@ -13,8 +13,8 @@ import os
 
 from utils import ArgsParser
 from utils import logger_config
-from engine import TensorRTCalibrator
 from engine import onnx2tensorrt as onnx2tensorrt_engine
+from engine import build_tensorrt_calibration_dataloader
 
 parser = ArgsParser()
 parser.add_argument('--onnx_model_path', type=str, default='./model_data/v2x_yolov6s.onnx', help='onnx model path')
@@ -43,32 +43,15 @@ def onnx2tensorrt(opt):
     calibrator_image_dir = os.path.abspath(opt.calibrator_image_dir)
     calibrator_table_path = os.path.abspath(opt.calibrator_table_path)
     data_type = opt.data_type
-    logger = logger_config("./log.log","ONNX2TensorRT")
+    logger = logger_config("./log.log")
     if mode == 'int8':
-        if model_type == 'yolov5':
-            from model.yolov5 import YOLOv5CalibrationDataloader
-            calibration_dataloader = YOLOv5CalibrationDataloader(logger,input_shape,
-                                                                 calibrator_image_dir,data_type)
-            calibrator = TensorRTCalibrator(calibration_dataloader,calibrator_table_path)
-        elif model_type == 'yolov8':
-            from model.yolov8 import YOLOv8CalibrationDataloader
-            calibration_dataloader = YOLOv8CalibrationDataloader(logger,input_shape,
-                                                                 calibrator_image_dir,data_type)
-            calibrator = TensorRTCalibrator(calibration_dataloader,calibrator_table_path)
-        elif model_type == 'yolos':
-            from model.yolos import YOLOSCalibrationDataloader
-            calibration_dataloader = YOLOSCalibrationDataloader(logger,input_shape,
-                                                                calibrator_image_dir,data_type)
-            calibrator = TensorRTCalibrator(calibration_dataloader,calibrator_table_path)
-        else:
-            # 设置成fp16模式
-            calibrator = None
-            mode = 'fp16'
+        trt_calibrator = build_tensorrt_calibration_dataloader(logger,input_shape,calibrator_image_dir,
+                                                               data_type,calibrator_table_path,model_type)
     else:
-        calibrator = None
+        trt_calibrator = None
 
     # 解析ONNX生成TensorRT模型
-    onnx2tensorrt_engine(logger,onnx_model_path,tensorrt_model_path,mode,calibrator)
+    onnx2tensorrt_engine(logger,onnx_model_path,tensorrt_model_path,mode,trt_calibrator)
 
 def run_main():
     """

@@ -17,10 +17,11 @@ import numpy as np
 from tqdm import tqdm
 from threading import Thread
 from datetime import datetime
+from model import build_model
 
 from utils import ArgsParser
 from utils import init_config
-from utils import logger_config
+from utils import init_logger
 from utils import draw_detection_results
 
 IMG_FORMATS = ['.bmp', '.dng', '.jpeg', '.jpg', '.mpo', '.png', '.tif', '.tiff', '.webp']  # include image suffixes
@@ -32,6 +33,7 @@ parser.add_argument('--source', type=str, default='./video', help='image path or
 parser.add_argument('--result_dir', type=str, default="./result", help='video detection result save directory')
 parser.add_argument('--interval', type=float, default=-1, help='video interval')
 parser.add_argument('--num_threads', type=int, default=1, help='number of detection threads')
+parser.add_argument('--gpu_id', type=int, default=0, help='gpu id')
 parser.add_argument('--print_detection_result', action='store_true', help='export time')
 opt = parser.parse_args()
 
@@ -254,29 +256,18 @@ def run_main():
     """
     # 初始化参数
     cfg = init_config(opt)
+    logger = init_logger(cfg)
 
     # 初始化检测模型
-    model_type = cfg["DetectionModel"]["model_type"].lower()
-    model_path = cfg["DetectionModel"]["engine_model_path"]
-    _,model_name = os.path.split(model_path)
-    logger = logger_config(cfg['log_path'], model_type)
     detection_models = []
     for _ in np.arange(opt.num_threads):
-        if model_type == 'yolov5':
-            from model import YOLOv5
-            detection_model = YOLOv5(logger=logger, cfg=cfg["DetectionModel"])
-        elif model_type == 'yolov8':
-            from model import YOLOv8
-            detection_model = YOLOv8(logger=logger, cfg=cfg["DetectionModel"])
-        elif model_type == 'yolos':
-            from model import YOLOS
-            detection_model = YOLOS(logger=logger, cfg=cfg["DetectionModel"])
-        else:
-            sys.exit(0)
+        detection_model = build_model(logger,cfg["DetectionModel"],gpu_id=opt.gpu_id)
         detection_models.append(detection_model)
 
     # 初始化相关路径路径
-    time = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
+    time = datetime.now().strftime('%Y%m%d%H%M%S')
+    model_path = cfg["DetectionModel"]["engine_model_path"]
+    _,model_name = os.path.split(model_path)
     result_dir = os.path.join(opt.result_dir, model_name,time)
     source = os.path.abspath(opt.source)
     interval = opt.interval
