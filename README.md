@@ -20,3 +20,4 @@
 - yolov5的部署教程详见[yolov5_tutorial](docs/models/yolov5.md);
 - yolov8的部署教程详见[yolov8_tutorial](docs/models/yolov8.md);
 - yolos的部署教程详见[yolos_tutorial](docs/models/yolos.md);
+- TenosrRT模型转换教程详见[TensorRT-Tools-py](https://github.com/Daipuwei/TensorRT-Tools-py);
