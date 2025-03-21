@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-# @Time    : 2023/3/28 下午2:32
+# @Time    : 2025/3/14 07:30
 # @Author  : DaiPuWei
-# @Email   : daipuwei@qq.com
-# @File    : yolov5.py
+# @Email   : puwei.dai@vitalchem.com
+# @File    : yolov4.py
 # @Software: PyCharm
 
 """
@@ -24,11 +24,11 @@ from utils import xywh2xyxy
 from utils import scale_coords
 from utils import draw_detection_results
 
-class YOLOv5(DetectionModel):
+class YOLOv4(DetectionModel):
 
     def __init__(self,logger,cfg,gpu_id=0,**kwargs):
         """
-        这是YOLOv5的初始化函数
+        这是YOLOv4的初始化函数
         Args:
             logger: 日志类实例
             cfg: 配置参数文件或者配置参数字典
@@ -36,7 +36,7 @@ class YOLOv5(DetectionModel):
         """
         class_names = get_classes(os.path.abspath(cfg['class_name_path']))
         engine = build_engine(logger,cfg,gpu_id=gpu_id)
-        super(YOLOv5,self).__init__(logger=logger,
+        super(YOLOv4,self).__init__(logger=logger,
                                     engine=engine,
                                     class_names=class_names,
                                     model_type=cfg['model_type'],
@@ -44,19 +44,18 @@ class YOLOv5(DetectionModel):
                                     iou_threshold=cfg['iou_threshold'],
                                     gpu_id=gpu_id,
                                     *kwargs)
-        self.logger.info("初始化YOLOv5检测模型成功")
+        self.logger.info("初始化YOLOv4检测模型成功")
 
     def preprocess_single_image(self,image):
         """
-        这是YOLOv5对单张图像进行预处理的函数
+        这是YOLOv4对单张图像进行预处理的函数
         Args:
             image: 图像，opencv格式
         Returns:
         """
         # 填充像素并等比例缩放
         h,w = np.shape(image)[0:2]
-        image_tensor = letterbox(image,(self.h,self.w))
-        image_tensor = image_tensor.astype(np.float32)
+        image_tensor = cv2.resize(image, (self.w,self.h), interpolation=cv2.INTER_LINEAR)
         # BGR转RGB
         image_tensor = cv2.cvtColor(image_tensor, cv2.COLOR_BGR2RGB)
         # # 归一化
@@ -64,12 +63,12 @@ class YOLOv5(DetectionModel):
         # # hwc->chw
         # if self.engine.get_is_nchw():
         #     image_tensor = np.transpose(image_tensor, (2, 0, 1))
-        image_tensor = np.ascontiguousarray(image_tensor)
+        image_tensor = np.ascontiguousarray(image_tensor).astype(np.float32)
         return image_tensor,(h,w)
 
     def preprocess_batch_images(self,batch_images):
         """
-        这是YOLOv5对批量图像进行处理的函数
+        这是YOLOv4对批量图像进行处理的函数
         Args:
             batch_images: 批量图像数组，每张图像opencv读入
         Returns:
@@ -87,7 +86,7 @@ class YOLOv5(DetectionModel):
 
     def preprocess(self,image):
         """
-        这是YOLOv5的图像预处理函数
+        这是YOLOv4的图像预处理函数
         Args:
             image: 输入图像，可以为单张图像也可以为图像数组
         Returns:
@@ -106,35 +105,29 @@ class YOLOv5(DetectionModel):
 
     def postprocess_single_image(self,dets,image_shape):
         """
-        这是YOLOv6对一张图像的预测结果进行后处理的函数
+        这是对一张图像的预测结果进行后处理的函数
         Args:
-            dets: 模型输出结果张量,shape为(1,bbox_num，num_classes+5)
-            image_shapes: 图像尺度数组，shape为(1,2)
+            dets: 预测结果，shape为(anchor_num,6)
+            scale: 放缩数组
+            image_shape: 图像尺度
         Returns:
         """
-        # 根据置信度对预测框进行过滤
-        obj_conf = dets[:, 4]
-        dets = dets[obj_conf > self.confidence_threshold]
-        obj_conf = obj_conf[obj_conf > self.confidence_threshold]
-
         # 计算每个类别的后验概率
-        cls_id = np.argmax(dets[:, 5:],axis=1)
-        scores = np.array([dets[i, 5+id] for i,id in enumerate(cls_id)])
-        scores *= obj_conf
-        bboxes = dets[..., 0:4]
+        cls_id = np.argmax(dets[:, 4:],axis=1)
+        scores = np.array([dets[i, 4+id] for i,id in enumerate(cls_id)])
+        bboxes = dets[...,0:4]
 
-        # 利用置信度进一步对预测框进行过过滤
-        # valid_scores = scores > self.confidence_threshold
-        # if len(valid_scores) == 0:
-        #     return []
-        # cls_id = cls_id[valid_scores]
-        # scores = scores[valid_scores]
-        # bboxes = bboxes[valid_scores]
-        #print(bboxes)
+        # 根据后延概率进行过滤对预测框进行过滤
+        index = scores > self.confidence_threshold
+        scores = scores[index]
+        cls_id = cls_id[index]
+        bboxes = bboxes[index]
 
         # 对预测框进行坐标格式进行转换，并还原到原始尺度
-        bboxes = xywh2xyxy(bboxes)
-        bboxes = scale_coords(bboxes, (self.h, self.w), image_shape)
+        h,w = image_shape
+        # scales = np.array([h,w,h,w]).reshape((1,4))
+        scales = np.array([w, h, w, h]).reshape((1, 4))
+        bboxes *= scales
 
         # 使用NMS算法过滤冗余框
         indices = cv2.dnn.NMSBoxes(bboxes.tolist(), scores.tolist(),
@@ -164,10 +157,10 @@ class YOLOv5(DetectionModel):
 
     def postprocess(self,outputs,image_shapes):
         """
-        这是YOLOv5模型后处理函数
+        这是YOLOv4模型后处理函数
         Args:
-            outputs: 模型输出结果张量,shape为(batchsize,anchor_num*(num_classes+5))
-            image_shapes: 图像尺度数组，shape为(batchsize,2)
+            dets: 模型输出结果张量,shape为(1,bbox_num，num_classes+5)
+            image_shapes: 图像尺度数组，shape为(1,2)
         Returns:
         """
         preds = []
@@ -188,7 +181,7 @@ class YOLOv5(DetectionModel):
 
     def detect(self,image,export_time=False,print_detection_result=False):
         """
-        这是YOLOv5模型检测图像的函数
+        这是YOLOv4模型检测图像的函数
         Args:
             image: 输入图像，可以为单张图像也可以为图像数组
             export_time: 是否输出时间信息标志位，默认为False
@@ -267,7 +260,7 @@ class YOLOv5(DetectionModel):
 
     def detect_video(self,video_path,video_result_path,interval=-1,print_detection_result=False):
         """
-        这是YOLOv6检测视频的函数
+        这是检测视频的函数
         Args:
             video_path: 视频路径
             video_result_path: 检测结果视频路径
@@ -313,14 +306,14 @@ class YOLOv5(DetectionModel):
 
 
 @MODEL_REGISTRY.register()
-def yolov5(logger,cfg,**kwargs):
+def yolov4(logger,cfg,**kwargs):
     """
-    这是YOLOv5的初始化函数
+    这是YOLOv4的初始化函数
     Args:
         logger: 日志类实例
         cfg: 参数配置字典
         **kwargs: 自定义参数
     Returns:
     """
-    model = YOLOv5(logger,cfg,**kwargs)
+    model = YOLOv4(logger,cfg,**kwargs)
     return model

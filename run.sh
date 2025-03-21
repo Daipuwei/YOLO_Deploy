@@ -1,28 +1,3 @@
-# onnx2tensorrt
-## fp32
-python onnx2tensorrt.py --onnx_model_path ./model_data/yolov5s.onnx \
-       --tensorrt_model_path ./model_data/yolov5s.trt \
-       --input_shape 1 3 640 640 \
-       --model_type yolov5 \
-       --mode fp32
-
-## fp16
-python onnx2tensorrt.py --onnx_model_path ./model_data/yolov5s.onnx \
-       --tensorrt_model_path ./model_data/yolov5s.trt \
-       --input_shape 1 3 640 640 \
-       --model_type yolov5 \
-       --mode fp16
-
-## int8
-python onnx2tensorrt.py --onnx_model_path ./model_data/yolov5s.onnx \
-       --tensorrt_model_path ./model_data/yolov5s.trt \
-       --input_shape 1 3 640 640 \
-       --model_type yolov5 \
-       --mode int8 \
-       --calibrator_image_dir ./image/coco_calib/ \
-       --calibrator_table_path ./model_data/yolov5s_coco_calibrator_table.cache \
-       --data_type float32
-
 # 检测图像(集)或视频(集)
 python detect.py --cfg ./config/detection.yaml \
        --source ./image/coco_calib/ \

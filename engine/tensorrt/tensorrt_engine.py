@@ -2,7 +2,7 @@
 # @Time    : 2023/3/28 下午2:31
 # @Author  : DaiPuWei
 # @Email   : daipuwei@qq.com
-# @File    : tensorrt_model.py
+# @File    : tensorrt_engine.py
 # @Software: PyCharm
 
 """
@@ -72,7 +72,7 @@ class TensorRTEngine(BaseEngine):
             if len(input_shape) == 4:
                 if input_shape[1] > 3:
                     flag = False
-                break
+                    break
         return flag
 
     # def __del__(self):

@@ -1,0 +1,11 @@
+DetectionModel:
+  model_type: "yolov9"
+  class_name_path: ./model_data/coco_names.txt
+  engine_model_path: ./model_data/yolov8s.onnx
+  input_shape: [1, 3,640,640]
+  engine_type: 'tensorrt'
+  confidence_threshold: 0.3
+  iou_threshold: 0.45
+
+log_path: "./log.log"
+

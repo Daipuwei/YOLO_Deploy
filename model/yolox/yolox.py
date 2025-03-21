@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-# @Time    : 2023/3/28 下午2:32
+# @Time    : 2025/1/6 07:59
 # @Author  : DaiPuWei
 # @Email   : daipuwei@qq.com
-# @File    : yolov5.py
+# @File    : yolox.py
 # @Software: PyCharm
 
 """
-    这是定义YOLOv5模型的脚本
+    这是定义YOLOX模型的脚本
 """
 
 import os
@@ -24,11 +24,11 @@ from utils import xywh2xyxy
 from utils import scale_coords
 from utils import draw_detection_results
 
-class YOLOv5(DetectionModel):
+class YOLOX(DetectionModel):
 
     def __init__(self,logger,cfg,gpu_id=0,**kwargs):
         """
-        这是YOLOv5的初始化函数
+        这是YOLOX的初始化函数
         Args:
             logger: 日志类实例
             cfg: 配置参数文件或者配置参数字典
@@ -36,7 +36,7 @@ class YOLOv5(DetectionModel):
         """
         class_names = get_classes(os.path.abspath(cfg['class_name_path']))
         engine = build_engine(logger,cfg,gpu_id=gpu_id)
-        super(YOLOv5,self).__init__(logger=logger,
+        super(YOLOX,self).__init__(logger=logger,
                                     engine=engine,
                                     class_names=class_names,
                                     model_type=cfg['model_type'],
@@ -44,11 +44,11 @@ class YOLOv5(DetectionModel):
                                     iou_threshold=cfg['iou_threshold'],
                                     gpu_id=gpu_id,
                                     *kwargs)
-        self.logger.info("初始化YOLOv5检测模型成功")
+        self.logger.info("初始化YOLOX检测模型成功")
 
     def preprocess_single_image(self,image):
         """
-        这是YOLOv5对单张图像进行预处理的函数
+        这是YOLOX对单张图像进行预处理的函数
         Args:
             image: 图像，opencv格式
         Returns:
@@ -57,19 +57,15 @@ class YOLOv5(DetectionModel):
         h,w = np.shape(image)[0:2]
         image_tensor = letterbox(image,(self.h,self.w))
         image_tensor = image_tensor.astype(np.float32)
-        # BGR转RGB
-        image_tensor = cv2.cvtColor(image_tensor, cv2.COLOR_BGR2RGB)
-        # # 归一化
-        # image_tensor = image_tensor / 255.0
-        # # hwc->chw
-        # if self.engine.get_is_nchw():
-        #     image_tensor = np.transpose(image_tensor, (2, 0, 1))
-        image_tensor = np.ascontiguousarray(image_tensor)
+        # hwc->chw
+        if self.is_nchw:
+            image_tensor = np.transpose(image_tensor, (2, 0, 1))
+        image_tensor = np.ascontiguousarray(image_tensor).astype(np.float32)
         return image_tensor,(h,w)
 
     def preprocess_batch_images(self,batch_images):
         """
-        这是YOLOv5对批量图像进行处理的函数
+        这是YOLOX对批量图像进行处理的函数
         Args:
             batch_images: 批量图像数组，每张图像opencv读入
         Returns:
@@ -87,7 +83,7 @@ class YOLOv5(DetectionModel):
 
     def preprocess(self,image):
         """
-        这是YOLOv5的图像预处理函数
+        这是YOLOX的图像预处理函数
         Args:
             image: 输入图像，可以为单张图像也可以为图像数组
         Returns:
@@ -106,10 +102,11 @@ class YOLOv5(DetectionModel):
 
     def postprocess_single_image(self,dets,image_shape):
         """
-        这是YOLOv6对一张图像的预测结果进行后处理的函数
+        这是对一张图像的预测结果进行后处理的函数
         Args:
-            dets: 模型输出结果张量,shape为(1,bbox_num，num_classes+5)
-            image_shapes: 图像尺度数组，shape为(1,2)
+            dets: 预测结果，shape为(anchor_num,6)
+            scale: 放缩数组
+            image_shape: 图像尺度
         Returns:
         """
         # 根据置信度对预测框进行过滤
@@ -133,7 +130,7 @@ class YOLOv5(DetectionModel):
         #print(bboxes)
 
         # 对预测框进行坐标格式进行转换，并还原到原始尺度
-        bboxes = xywh2xyxy(bboxes)
+        # bboxes = xywh2xyxy(bboxes)
         bboxes = scale_coords(bboxes, (self.h, self.w), image_shape)
 
         # 使用NMS算法过滤冗余框
@@ -164,9 +161,10 @@ class YOLOv5(DetectionModel):
 
     def postprocess(self,outputs,image_shapes):
         """
-        这是YOLOv5模型后处理函数
+        这是YOLOX模型后处理函数
         Args:
-            outputs: 模型输出结果张量,shape为(batchsize,anchor_num*(num_classes+5))
+            outputs: 模型输出结果张量,shape为(batchsize,anchor_num,6)
+            scales: 图像放缩系数数组，shape为(batchsize,4)
             image_shapes: 图像尺度数组，shape为(batchsize,2)
         Returns:
         """
@@ -188,7 +186,7 @@ class YOLOv5(DetectionModel):
 
     def detect(self,image,export_time=False,print_detection_result=False):
         """
-        这是YOLOv5模型检测图像的函数
+        这是YOLOX模型检测图像的函数
         Args:
             image: 输入图像，可以为单张图像也可以为图像数组
             export_time: 是否输出时间信息标志位，默认为False
@@ -267,7 +265,7 @@ class YOLOv5(DetectionModel):
 
     def detect_video(self,video_path,video_result_path,interval=-1,print_detection_result=False):
         """
-        这是YOLOv6检测视频的函数
+        这是检测视频的函数
         Args:
             video_path: 视频路径
             video_result_path: 检测结果视频路径
@@ -313,14 +311,14 @@ class YOLOv5(DetectionModel):
 
 
 @MODEL_REGISTRY.register()
-def yolov5(logger,cfg,**kwargs):
+def yolox(logger,cfg,**kwargs):
     """
-    这是YOLOv5的初始化函数
+    这是YOLOX的初始化函数
     Args:
         logger: 日志类实例
         cfg: 参数配置字典
         **kwargs: 自定义参数
     Returns:
     """
-    model = YOLOv5(logger,cfg,**kwargs)
+    model = YOLOX(logger,cfg,**kwargs)
     return model

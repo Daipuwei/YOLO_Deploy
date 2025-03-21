@@ -21,7 +21,7 @@ from pascal_voc_writer import Writer
 
 from utils import ArgsParser
 from utils import init_config
-from utils import logger_config
+from utils import init_logger
 from model import build_model
 
 IMG_FORMATS = ['.bmp', '.dng', '.jpeg', '.jpg', '.mpo', '.png', '.tif', '.tiff', '.webp']  # include image suffixes

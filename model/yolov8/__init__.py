@@ -5,5 +5,4 @@
 # @File    : __init__.py.py
 # @Software: PyCharm
 
-from .yolov8 import YOLOv8
-from .yolov8 import yolov8
+from .yolov8 import YOLOv8, yolov8

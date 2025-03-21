@@ -5,5 +5,5 @@
 # @File    : __init__.py.py
 # @Software: PyCharm
 
-from .onnx_model import ONNXEngine
-from .onnx_model import onnx
+from .onnx_engine import ONNXEngine
+from .onnx_engine import onnx

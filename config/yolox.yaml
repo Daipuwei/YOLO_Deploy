@@ -1,0 +1,11 @@
+DetectionModel:
+  model_type: "yolox"
+  class_name_path: ./model_data/car_ai_20241024_names.txt
+  engine_model_path: ./model_data/vot_yolox_x_vot_car_ai_prelabel_960x960_nhwc.trt.fp16
+  input_shape: [1, 640,640,3]
+  engine_type: 'tensorrt'
+  confidence_threshold: 0.3
+  iou_threshold: 0.45
+
+log_path: "./log.log"
+

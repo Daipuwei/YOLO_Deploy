@@ -22,8 +22,6 @@ from pycocotools.cocoeval import COCOeval
 
 from model import build_model
 from utils import NpEncoder
-from utils import VOCDataset
-from utils import COCODataset
 from utils import ArgsParser
 from utils import save_yaml
 from utils import init_config

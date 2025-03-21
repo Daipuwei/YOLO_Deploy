@@ -10,7 +10,6 @@
 """
 
 import os
-import sys
 import cv2
 import json
 import shutil
@@ -25,7 +24,7 @@ from model import build_model
 from utils import NpEncoder
 from utils import ArgsParser
 from utils import init_config
-from utils import logger_config
+from utils import init_logger
 
 IMG_FORMATS = ['.bmp', '.dng', '.jpeg', '.jpg', '.mpo', '.png', '.tif', '.tiff', '.webp']  # include image suffixes
 

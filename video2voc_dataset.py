@@ -10,7 +10,6 @@
 """
 
 import os
-import sys
 import cv2
 import numpy as np
 
@@ -25,7 +24,7 @@ from model import build_model
 from utils import ArgsParser
 from utils import init_config
 from utils import print_error
-from utils import logger_config
+from utils import init_logger
 
 VID_FORMATS = ['.asf', '.avi', '.gif', '.m4v', '.mkv', '.mov', '.mp4', '.mpeg', '.mpg', '.ts', '.wmv']  # include video suffixes
 

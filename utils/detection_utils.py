@@ -71,6 +71,26 @@ def letterbox(image, resize_shape=(640, 640), color=(114, 114, 114)):
     #cv2.imwrite('letterbox.jpg', resize_image)
     return resize_image
 
+def iou(bbox1,bbox2):
+    """
+    这是计算两个矩形框iou的函数
+    Args:
+        bbox1: 检测框1，格式为x1y1x2y2
+        bbox2: 检测框2，格式为x1y1x2y2
+    Returns:
+    """
+    # 计算区域交集的左上与右下坐标
+    lu = np.maximum(bbox1[0:2], bbox2[0:2])
+    rd = np.minimum(bbox1[2:], bbox2[2:])
+    # 计算区域交集的面积
+    intersection = np.maximum(0.0, rd - lu)
+    inter_square = intersection[0] * intersection[1]
+    # 计算区域并集的面积
+    square1 = (bbox1[2] - bbox1[0]) * (bbox1[3] - bbox1[1])
+    square2 = (bbox2[2] - bbox2[0]) * (bbox2[3] - bbox2[1])
+    union_square = np.maximum(square1 + square2 - inter_square, 1e-10)
+    return np.clip(inter_square / union_square, 0.0, 1.0)
+
 def xywh2xyxy(x):
     """
     这是转换预测框坐标格式的函数，xywh->xyxy
@@ -107,6 +127,61 @@ def xywh2xyxy(x):
 #
 #     clip_coords(coords, img0_shape)
 #     return coords
+
+def nms(detection_results,iou_threshold=0.5, no_class=False):
+    """
+    这是nms算法的函数
+    Args:
+        detection_results: 目标框数组，每个目标框格式为[x1, y1, x2, y2, score, cls, projx, projy]
+        iou_threshold: iou阈值，默认为0.5
+        no_class: 是否按分类进行nms,默认为False
+    Returns:
+    """
+    # 根据得分从大到小进行排序
+    obj_scores = detection_results[:,4]
+    idx = np.argsort(-1 * obj_scores)
+    detection_results = detection_results[idx]
+    obj_bboxes = detection_results[:,0:4]
+    obj_cls = detection_results[:,5].astype(np.int64)
+
+    # 获取目标框类别
+    obj_cls_ids = set()
+    for detection_result in detection_results:
+        obj_cls_ids.add(int(detection_result[5]))
+    obj_cls_ids = list(obj_cls_ids)
+
+    keep = []
+    if no_class:
+        _keep = filter_bboxes(obj_bboxes,idx,iou_threshold)
+        keep.extend(_keep)
+    else:
+        for _cls in obj_cls_ids:
+            cls_idx = idx[obj_cls ==_cls]
+            _keep = filter_bboxes(obj_bboxes,cls_idx,iou_threshold)
+            keep.extend(_keep)
+    return keep
+
+def filter_bboxes(obj_bboxes,idx,iou_threshold=0.5):
+    """
+    这是根据iou过滤检测框的函数
+    Args:
+        obj_bboxes: 检测框数组,[x1, y1, x2, y2]
+        idx: 检测框索引列表
+        iou_threshold: iou阈值, 默认为0.5
+    Returns:
+    """
+    keep = []
+    while idx.size > 0:
+        # order[0]是当前分数最大的窗口，肯定保留
+        i = idx[0]
+        keep.append(i)
+        # 计算窗口i与其他所有窗口的交叠部分的面积
+        ious = np.array([iou(obj_bboxes[i], obj_bboxes[j]) for j in idx[1:]])
+        # inds为所有与窗口i的iou值小于threshold值的窗口的index，其他窗口此次都被窗口i吸收
+        inds = np.where(ious <= iou_threshold)[0]
+        # order里面只保留与窗口i交叠面积小于threshold的那些窗口，由于ovr长度比order长度少1(不包含i)，所以inds+1对应到保留的窗口
+        idx = idx[inds + 1]
+    return keep
 
 def scale_coords(coords,input_shape, image_shape):
     """

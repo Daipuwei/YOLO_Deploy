@@ -5,7 +5,5 @@
 # @File    : __init__.py.py
 # @Software: PyCharm
 
-from .tensorrt_model import TensorRTEngine
-from .tensorrt_model import tensorrt
-from .tensorrt_utils import onnx2tensorrt
-from .tensorrt_calibrator import *
+from .tensorrt_engine import TensorRTEngine
+from .tensorrt_engine import tensorrt

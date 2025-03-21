@@ -60,11 +60,11 @@ class YOLOv8(DetectionModel):
         image_tensor = image_tensor.astype(np.float32)
         # BGR转RGB
         image_tensor = cv2.cvtColor(image_tensor, cv2.COLOR_BGR2RGB)
-        # 归一化
-        image_tensor = image_tensor / 255.0
-        # hwc->chw
-        if self.engine.get_is_nchw():
-            image_tensor = np.transpose(image_tensor, (2, 0, 1))
+        # # 归一化
+        # image_tensor = image_tensor / 255.0
+        # # hwc->chw
+        # if self.engine.get_is_nchw():
+        #     image_tensor = np.transpose(image_tensor, (2, 0, 1))
         image_tensor = np.ascontiguousarray(image_tensor)
         return image_tensor,(h,w)
 
@@ -107,40 +107,37 @@ class YOLOv8(DetectionModel):
 
     def postprocess_single_image(self,dets,image_shape):
         """
-        这是对一张图像的预测结果进行后处理的函数
+        这是YOLOv8对一张图像的预测结果进行后处理的函数
         Args:
-            dets: 预测结果，shape为(anchor_num,6)
-            scale: 放缩数组
-            image_shape: 图像尺度
+            dets: 模型输出结果张量,shape为(1,bbox_num，num_classes+5)
+            image_shapes: 图像尺度数组，shape为(1,2)
         Returns:
         """
-        # 对检测框进行解码，获取矩形框坐标、最大类别概率及其下标
-        cls_id = np.argmax(dets[:, 4:],axis=1)
-        scores = np.max(dets[:,4:],axis=1)
-        bboxes = dets[..., 0:4]
-
         # 预测框进行过过滤
-        mask = scores > self.confidence_threshold
+        obj_conf = dets[:, 4]
+        mask = obj_conf > self.confidence_threshold
         if len(mask) == 0:
             return []
-        cls_id = cls_id[mask]
-        scores = scores[mask]
-        bboxes = bboxes[mask]
+        dets = dets[mask]
+
+        # 对检测结果进行解码解码
+        cls_id = np.argmax(dets[:, 5:], axis=1)
+        scores = np.max(dets[:, 5:], axis=1)
+        bboxes = dets[..., 0:4]
 
         # 对预测框进行坐标格式进行转换，并还原到原始尺度
-        bboxes = xywh2xyxy(bboxes)
         bboxes = scale_coords(bboxes, (self.h, self.w), image_shape)
 
         # 使用NMS算法过滤冗余框
         indices = cv2.dnn.NMSBoxes(bboxes.tolist(), scores.tolist(),
-                                   self.confidence_threshold,self.iou_threshold)
-        indices = np.reshape(indices,(len(indices),))
+                                   self.confidence_threshold, self.iou_threshold)
+        indices = np.reshape(indices, (len(indices),))
         if len(indices) == 0:
             return []
         bboxes = bboxes[indices]
-        scores = scores[indices].reshape((-1,1))
-        cls_id = cls_id[indices].reshape((-1,1))
-        preds = np.concatenate([bboxes,scores,cls_id],axis=1)
+        scores = scores[indices].reshape((-1, 1))
+        cls_id = cls_id[indices].reshape((-1, 1))
+        preds = np.concatenate([bboxes, scores, cls_id], axis=1)
 
         # 对结果进行编码
         outputs = []
@@ -161,8 +158,7 @@ class YOLOv8(DetectionModel):
         """
         这是YOLOv8模型后处理函数
         Args:
-            outputs: 模型输出结果张量,shape为(batchsize,anchor_num,6)
-            scales: 图像放缩系数数组，shape为(batchsize,4)
+            outputs: 模型输出结果张量,shape为(batchsize,bbox_num，num_classes+5)
             image_shapes: 图像尺度数组，shape为(batchsize,2)
         Returns:
         """
