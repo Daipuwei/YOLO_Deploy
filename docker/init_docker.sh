@@ -7,6 +7,7 @@ TEMP=$(getopt -o "" \
                start_cpu_id:,\
                end_cpu_id:,\
                mount:,\
+               use_gpu:,\
                help," \
        -n "$0" -- "$@")
 if [ $? != 0 ]; then
@@ -36,6 +37,9 @@ while true ; do
         --mount)
             MOUNT_OPTIONS=$2
             shift 2 ;;
+        --use_gpu)
+            USE_GPU=$2
+            shift 2 ;;
         --help)
             echo "用法：$0 [选项]"
             echo "  --port                  容器端口（必填）"
@@ -44,6 +48,7 @@ while true ; do
             echo "  --start_cpu_id          开始CPU核心ID (必填) "
             echo "  --end_cpu_id            结束CPU核心ID (必填) "
             echo "  --mount                 挂载目录映射关系字符串"
+            echo "  --use_gpu               是否使用NVIDIA GPU"
             exit 0 ;;
         --)
             shift; break ;;
@@ -61,6 +66,7 @@ init_docker_container() {
    local start_cpu_id=$4
    local end_cpu_id=$5
    local mount_options=$6
+   local use_gpu=$7
 
    # 删除指定名称的容器
    delete_container "$docker_container_name"
@@ -85,6 +91,23 @@ init_docker_container() {
             mount_options_str+=" -v $host_dir:$container_dir"
         fi
     done
+    echo "自定义磁盘挂载为: $mount_options_str"
+
+    # 生成使用GPU选项（增加空值判断）
+    local gpu_option_str=""
+    if [[ ${use_gpu} -eq 1 ]]; then
+        # 检查NVIDIA驱动是否安装
+        if ! command -v nvidia-smi &> /dev/null; then
+            echo "错误：未检测到NVIDIA驱动，请先安装驱动和nvidia-container-toolkit[7](@ref)" >&2
+            exit 1
+        fi
+        gpu_option_str="--gpus all"
+        # 增加CUDA环境变量设置（
+        export NVIDIA_VISIBLE_DEVICES=all
+        export NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    fi
+    echo "是否使用gpu:$use_gpu"
+    echo "GPU使用选项为: $gpu_option_str"
 
     # 判断是否启用虚拟化
     local enable_qemu=0
@@ -124,6 +147,7 @@ init_docker_container() {
            --ulimit stack=67108864 \
            --shm-size=32g  \
            -p "$port:22" \
+           ${gpu_option_str} \
 	         --cpuset-cpus=$cpu_ids \
 	         --name $docker_container_name \
            -e LANG=zh_CN.UTF-8 \
@@ -141,6 +165,20 @@ init_docker_container() {
 
    # 暴露端口
    expose_container_port $docker_container_name $port
+}
+
+# 在脚本开头添加环境检查
+check_gpu_support() {
+    if [[ ${USE_GPU} -eq 1 ]]; then
+        if [[ ! -f /proc/driver/nvidia/version ]]; then
+            echo "错误：未检测到NVIDIA GPU驱动，请参考网页[1,4](@ref)安装驱动" >&2
+            exit 1
+        fi
+        if [[ ! $(docker info | grep -i nvidia) ]]; then
+            echo "错误：Docker未配置NVIDIA支持，请参考网页[3](@ref)安装nvidia-container-toolkit" >&2
+            exit 1
+        fi
+    fi
 }
 
 # 获取 CPU ID 字符串数组
@@ -187,9 +225,9 @@ expose_container_port() {
    echo "container id : $container_id"
 
    # 将port加入ssh配置文件
-   docker exec -it $container_id /bin/bash sudo echo 'Port $port' >> /etc/ssh/sshd_config
+   docker exec -it $container_id /bin/bash sudo echo "'Port $port' >> /etc/ssh/sshd_config"
    docker exec -it $container_id /bin/bash service ssh restart
 }
 
 # 初始化Docker镜像
-init_docker_container ${PORT} ${DOCKER_CONTAINER_NAME} ${DOCKER_IMAGE_NAME} ${START_CPU_ID} ${END_CPU_ID} ${MOUNT_OPTIONS}
+init_docker_container ${PORT} ${DOCKER_CONTAINER_NAME} ${DOCKER_IMAGE_NAME} ${START_CPU_ID} ${END_CPU_ID} ${MOUNT_OPTIONS} ${USE_GPU}
