@@ -1,0 +1,29 @@
+# yolov7 检测配置模板
+DetectionModel:
+  model_type: yolov7
+  engine_type: onnxruntime
+  engine_model_path: ./models/yolov7.onnx
+  class_name_path: ./config/coco.names
+  confidence_threshold: 0.25
+  iou_threshold: 0.45
+  # NMS过滤模式（class_agnostic整体过滤，缺省；per_class两阶段按类过滤）
+  nms_mode: class_agnostic
+  # per_class模式第二阶段整体过滤阈值（null=用iou_threshold必须执行；0=显式禁用保留跨类重复框；>0=自定义阈值；仅nms_mode=per_class时生效）
+  class_agnostic_threshold: null
+  # 是否除以255归一化（缺省True；归一化已融入ONNX时设False）
+  is_normalize: True
+  # 多输出原始模型融合参数（单输出模型可整段删除）：
+  # with_sigmoid：检测层输出是否已含sigmoid（True=ONNX已带，融合不再激活）
+  with_sigmoid: True
+  # anchors经txt文件读取（每行一个数值，按anchor宽高成对排列；缺省为
+  # ./model_data/coco_anchors.txt，stride由特征图hw自动推导、输出层数由
+  # engine输出节点个数决定）
+  anchors_path: ./model_data/coco_anchors.txt
+Log:
+  log_path: ./logs/yolo_deploy.log
+  log_max_bytes: 52428800
+  log_backup_count: 7
+  log_file_level: DEBUG
+  log_console_level: INFO
+  log_global_level: DEBUG
+  log_enqueue: True

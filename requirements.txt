@@ -1,21 +1,16 @@
-Cython==0.29.33
-numpy==1.23.1
-onnx==1.13.1
-onnx-simplifier==0.4.19
-onnxoptimizer==0.3.10
-onnxruntime-gpu==1.10.0
-opencv-contrib-python==4.7.0.72
-opencv-python==4.7.0.72
-pandas==1.5.3
-Pillow==9.4.0
-pycuda==2020.1
-PyYAML==6.0
-scikit-learn==1.2.2
-scipy==1.10.1
-seaborn==0.12.2
-six==1.16.0
-tqdm==4.65.0
-yacs==0.1.8
-pascal_voc_writer
-labelme
+# ============ 基础依赖 ============
+numpy>=1.21
+opencv-python>=4.5
+PyYAML
+loguru
+tqdm
 tabulate
+pycocotools
+# ============ 推理引擎（gpu/cpu二选一，严禁同时安装） ============
+# onnxruntime(CPU)与onnxruntime-gpu共享同一目录的库文件，后安装者覆盖先安装者，
+# GPU能力会被CPU版遮蔽（2026-09-15已两次踩坑）。部署机（有GPU）装GPU版：
+onnxruntime-gpu==1.18.1   # CUDA 11.8 + cuDNN 8 已验证
+# onnxruntime>=1.16        # 无GPU机器才装CPU版
+# tensorrt>=8.6             # NVIDIA TensorRT（需匹配驱动/CUDA版本，
+#                           #   并设置LD_LIBRARY_PATH指向libnvinfer所在目录）
+# pycuda

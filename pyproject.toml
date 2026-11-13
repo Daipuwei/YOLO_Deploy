@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "detection-track-toolkit"
+version = "0.1.0"
+description = "YOLO家族多框架（ONNXRuntime/TensorRT）检测推理与性能评估工具集"
+requires-python = ">=3.8"
+dependencies = [
+    "numpy>=1.21",
+    "opencv-python>=4.5",
+    "PyYAML",
+    "loguru",
+    "tqdm",
+    "tabulate",
+    "pycocotools",
+]
+
+# 推理引擎：gpu/cpu二选一，严禁同时安装——
+# onnxruntime(CPU)与onnxruntime-gpu共享同一目录的库文件，后安装者覆盖先安装者，
+# GPU能力会被CPU版遮蔽（2026-09-15已两次踩坑）。安装方式：pip install -e ".[gpu]"
+[project.optional-dependencies]
+gpu = ["onnxruntime-gpu==1.18.1"]
+cpu = ["onnxruntime>=1.16"]
+
+[tool.setuptools.packages.find]
+include = ["detection_track_toolkit*"]

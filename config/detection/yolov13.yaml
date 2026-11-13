@@ -1,0 +1,27 @@
+# yolov13 检测配置模板
+DetectionModel:
+  model_type: yolov13
+  engine_type: onnxruntime
+  engine_model_path: ./models/yolov13s.onnx
+  class_name_path: ./config/coco.names
+  confidence_threshold: 0.25
+  iou_threshold: 0.45
+  # NMS过滤模式（class_agnostic整体过滤，缺省；per_class两阶段按类过滤）
+  nms_mode: class_agnostic
+  # per_class模式第二阶段整体过滤阈值（null=用iou_threshold必须执行；0=显式禁用保留跨类重复框；>0=自定义阈值；仅nms_mode=per_class时生效）
+  class_agnostic_threshold: null
+  # 是否除以255归一化（显式声明，与缺省一致；div255已融入ONNX的DFL导出使用时需改为False）
+  is_normalize: True
+  # bbox坐标布局（缺省xyxy；cxcywh导出需显式设置）
+  bbox_format: xyxy
+  # 模型输出形状布局（grid_first=bs×grid_num×output_dim缺省；
+  # dim_first=bs×output_dim×grid_num，导出时输出前带transpose节点时设置）
+  output_layout: grid_first
+Log:
+  log_path: ./logs/yolo_deploy.log
+  log_max_bytes: 52428800
+  log_backup_count: 7
+  log_file_level: DEBUG
+  log_console_level: INFO
+  log_global_level: DEBUG
+  log_enqueue: True

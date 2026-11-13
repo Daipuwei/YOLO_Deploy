@@ -127,3 +127,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# 模型权重文件（体积过大，不纳入 git，另行分发）
+*.onnx
+*.trt
+*.trt.*
+*.engine

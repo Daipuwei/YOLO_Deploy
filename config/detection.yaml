@@ -1,11 +1,130 @@
+# ============================================================================
+# 检测模型推理/评测/预标注 主配置模板
+# ----------------------------------------------------------------------------
+# 使用方式：python tools/detect.py --cfg ./config/detection.yaml [--source ...]
+#           python tools/eval.py    --cfg ./config/detection.yaml [--dataset_dir ...]
+# 命令行覆盖：-o key=value（顶层键）或 -o DetectionModel.key=value（点分键）
+#           例：-o DetectionModel.confidence_threshold=0.001 DetectionModel.iou_threshold=0.5
+# 优先级：命令行 -o > yaml配置 > 代码缺省值
+# 相对路径解析：engine_model_path/class_name_path/anchors_path/log_path 等
+#   路径键的相对路径按"进程CWD优先、仓库根兜底"解析（resolve_config_path）：
+#   绝对路径原样使用；相对路径先在当前工作目录(CWD)下查找，CWD下不存在
+#   则回退锚定仓库根目录（detection_track_toolkit包所在目录的上一级）
+# 预处理/后处理可选键均可不写（使用代码缺省值）；引擎调优键的缺省值与
+# 语义说明见 detection_track_toolkit/engine/onnxruntime/onnxruntime_engine.py，
+# 本文件不重复列出
+# ============================================================================
+
 DetectionModel:
-  model_type: "yolov5"
-  class_name_path: ./model_data/coco_names.txt
-  engine_model_path: ./model_data/yolov5s.onnx
-  input_shape: [1, 3,640,640]
-  engine_type: 'tensorrt'
-  confidence_threshold: 0.3
+  # --------------------------------------------------------------------------
+  # 【必填】模型与引擎标识
+  # --------------------------------------------------------------------------
+  # model_type：检测模型类型（决定预处理/后处理装配风格）
+  #   yolov5/yolov7     anchor base家族（÷255归一化，融合输出cxcywh解码）
+  #   yolov6/v8/v9/v10/v11/v12/v13/yolo26/ppyoloe
+  #                     DFL检测头家族（自适应4/5+num_classes列输出，
+  #                     scores_sum在第4列可缺省）
+  #   yolox             解耦头家族（列4为obj置信度，obj×cls打分）
+  model_type: yolov5
+  # engine_type：推理引擎类型
+  #   onnxruntime        ONNX推理（CUDA可用时自动优先，否则CPU兜底并告警）
+  #   tensorrt           TensorRT引擎（.trt/.engine文件；运行需
+  #                     LD_LIBRARY_PATH包含libnvinfer所在目录）
+  engine_type: onnxruntime
+  # engine_model_path：模型文件路径（.onnx 或 .trt/.engine）
+  engine_model_path: ./models/yolov5s.onnx
+  # class_name_path：类别名文件路径（每行一个类别名，顺序与类别id一致）
+  class_name_path: ./config/coco.names
+
+  # --------------------------------------------------------------------------
+  # 【必填】检测阈值
+  # --------------------------------------------------------------------------
+  # confidence_threshold：置信度阈值，低于该值的检测框被过滤
+  #   部署取值建议参考最大F1工作点（详见docs/metrics.md）；
+  #   评测对齐ultralytics训练val时传0.001
+  confidence_threshold: 0.25
+  # iou_threshold：NMS抑制阈值（预测框之间的IoU超过该值则抑制低分框）
+  #   注意与评测AP的IoU阈值（0.5:0.95十档）无耦合关系，详见docs/metrics.md第3章
   iou_threshold: 0.45
 
-log_path: "./log.log"
+  # --------------------------------------------------------------------------
+  # 【可选】预处理参数
+  # --------------------------------------------------------------------------
+  # is_normalize：是否做除以255归一化（仅yolov5/DFL家族读取）
+  #   True（缺省）：输入除以255（yolov5/v7的标准导出惯例）
+  #   False：归一化已融入ONNX的导出
+  is_normalize: True
+  # resize_mode：缩放方式（全部模型读取）
+  #   keep_aspect_ratio（缺省）：等比例缩放+letterbox填充
+  #   resize：直接拉伸填满模型输入（不保持宽高比；坐标还原按h/w双轴
+  #           独立gain精确逆变换，由预处理逐图给出的restore_params支持）
+  resize_mode: keep_aspect_ratio
+  # pad_mode：letterbox填充锚定模式（全部模型读取；仅resize_mode=
+  #   keep_aspect_ratio时生效）
+  #   top_left（缺省）：缩放图贴左上角、填充全在右下（坐标还原无偏移）
+  #   center：居中填充（ultralytics口径；坐标还原需减填充偏移，
+  #           同样由restore_params逐图支持，两种模式检测精度等价）
+  pad_mode: top_left
 
+  # --------------------------------------------------------------------------
+  # 【可选】后处理参数
+  # --------------------------------------------------------------------------
+  # bbox_format：模型输出bbox坐标布局（仅yolox/DFL家族读取）
+  #   xyxy（缺省）：[x1,y1,x2,y2]
+  #   cxcywh：中心点宽高布局，解码时转换为xyxy
+  bbox_format: xyxy
+  # output_layout：模型输出形状布局（仅yolox/DFL家族读取）
+  #   grid_first（缺省）：bs×grid_num×output_dim
+  #   dim_first：bs×output_dim×grid_num，导出时输出前带transpose节点时设置
+  output_layout: grid_first
+  # nms_mode：NMS过滤模式（全部模型读取）
+  #   class_agnostic（缺省）：所有类别混在一起做一次贪心NMS
+  #   per_class：两阶段——先按类别过滤（不同类别互不抑制，修复类别无关
+  #             NMS漏检），再按class_agnostic_threshold做整体过滤
+  nms_mode: class_agnostic
+  # class_agnostic_threshold：per_class模式第二阶段整体过滤阈值（仅nms_mode=per_class生效）
+  #   null（缺省）：用iou_threshold做全局过滤（第二阶段必须执行，
+  #                         跨类别重复框按iou_threshold抑制）
+  #   >0：按该阈值抑制跨类别高度重叠的重复框（如0.9只抑制几乎完全重叠的框）
+  #   0：显式禁用全局过滤、跨类别重复框全部保留（恢复旧行为：同一目标
+  #       被多类别预测时保留所有近似重复框）
+  class_agnostic_threshold: null
+
+  # --------------------------------------------------------------------------
+  # 【可选】多输出原始模型参数（仅多输出导出的模型读取；单输出模型可整段删除）
+  # --------------------------------------------------------------------------
+  # with_sigmoid：多输出导出的检测层输出是否已含sigmoid（yolov5/yolox家族读取）
+  #   True（缺省）：ONNX已带sigmoid，融合解码不再激活
+  #   False：ONNX未带sigmoid，融合解码时手动向量化激活
+  #   （DFL家族无需配置：sigmoid是否已含由输出通道数推导的with_score_sum决定）
+  with_sigmoid: True
+  # anchors_path：yolov5家族多输出解码所需的anchor文件（每行一个数值，
+  #   按anchor宽高成对排列；缺省为./model_data/coco_anchors.txt）
+  #   各检测层stride由model_hw与特征图hw自动推导、输出层数由engine
+  #   输出节点个数决定，均无需配置
+  anchors_path: ./model_data/coco_anchors.txt
+
+  # 注：onnxruntime引擎调优参数（gpu_id/intra_op_threads/inter_op_threads/
+  # cudnn_conv_algo_search/arena_extend_strategy/gpu_mem_limit_gb）不出现在
+  # 本文件——缺省值与语义说明见 detection_track_toolkit/engine/onnxruntime/onnxruntime_engine.py
+  # 的ONNXRuntimeEngine构造签名；仅需覆盖缺省时按同名键写入本节
+
+# ----------------------------------------------------------------------------
+# 日志配置（统一Log段落；detect/eval/prelabel均按此读取）
+# ----------------------------------------------------------------------------
+Log:
+  # log_path：日志文件路径（未配置时缺省./logs/yolo_deploy.log）
+  log_path: ./logs/yolo_deploy.log
+  # log_max_bytes：单文件大小上限（字节），达到后轮转（缺省50MB）
+  log_max_bytes: 52428800
+  # log_backup_count：轮转备份文件保留个数（缺省7）
+  log_backup_count: 7
+  # log_file_level：文件sink级别（DEBUG记录全部，INFO仅常规信息）
+  log_file_level: DEBUG
+  # log_console_level：控制台sink级别（控制台输出量比文件更收敛）
+  log_console_level: INFO
+  # log_global_level：全局过滤级别（文件与控制台同时生效，运行时可用
+  #   set_global_level动态调整）
+  log_global_level: DEBUG
+  # log_enqueue：是否异步写日志（多线程/多进程场景推荐True，防日志撕裂）
+  log_enqueue: True
