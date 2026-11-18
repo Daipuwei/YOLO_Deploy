@@ -159,7 +159,14 @@ def resolve_image_path(yolo_dataset_dir,image_dir,file_name):
     candidate = os.path.join(image_dir, file_name)
     if os.path.exists(candidate):
         return candidate
-    file_id = os.path.splitext(file_name)[0]
+    # 仅当行尾恰好是已知图像后缀时才去掉后缀作为id，否则原样：
+    # 不能用splitext——文件名中间含点（如高度命名5.5m_frame0001973）
+    # 会被splitext把中间的点当扩展名分隔点、id错切成'5'，探测失败
+    file_id = file_name
+    for ext in IMAGE_EXTS:
+        if file_name.endswith(ext):
+            file_id = file_name[:-len(ext)]
+            break
     for ext in IMAGE_EXTS:
         candidate = os.path.join(image_dir, file_id + ext)
         if os.path.exists(candidate):

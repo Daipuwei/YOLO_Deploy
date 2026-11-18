@@ -122,8 +122,15 @@ class VOCDataset(Dataset):
                         # 空行跳过（与yolo.py子集清单解析口径一致）
                         continue
                     # 清单行可能自带后缀（如0001.jpg，迁移自YOLO等格式时常见）：
-                    # 统一splitext去后缀后再探测，裸id行不受影响（splitext原样返回）
-                    stem = os.path.splitext(file_id)[0]
+                    # 仅当行尾恰好是已知图像后缀时才去掉，否则原样作为stem。
+                    # 不能用splitext——文件名中间含点（如高度命名5.5m_frame0001973）
+                    # 会被splitext把中间的点当扩展名分隔点、stem错切成'5'，
+                    # 探测5.jpg失败导致整批图像被[WARN]静默跳过（修复）
+                    stem = file_id
+                    for ext in IMAGE_EXTS:
+                        if file_id.endswith(ext):
+                            stem = file_id[:-len(ext)]
+                            break
                     # 探测图像后缀（VOC图像集可能混存jpg/png等格式，不再硬编码.jpg）
                     image_path = None
                     for ext in IMAGE_EXTS:
